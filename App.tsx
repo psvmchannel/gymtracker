@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { ExerciseCatalog } from './src/features/exercises/ExerciseCatalog';
+import { WorkoutScreen } from './src/features/workouts/WorkoutScreen';
 import {
   APP_SECTIONS,
   DEFAULT_SECTION,
@@ -21,12 +22,16 @@ import {
   migrateDatabase,
   SQLiteExerciseRepository,
 } from './src/repositories/sqliteExerciseRepository';
+import { SQLiteWorkoutRepository } from './src/repositories/sqliteWorkoutRepository';
+import type { WorkoutRepository } from './src/repositories/workoutRepository';
 
 export default function App() {
   const [activeSection, setActiveSection] =
     useState<SectionId>(DEFAULT_SECTION);
   const [exerciseRepository, setExerciseRepository] =
     useState<ExerciseRepository | null>(null);
+  const [workoutRepository, setWorkoutRepository] =
+    useState<WorkoutRepository | null>(null);
   const [databaseError, setDatabaseError] = useState(false);
   const activeLabel = APP_SECTIONS.find(
     ({ id }) => id === activeSection,
@@ -38,6 +43,7 @@ export default function App() {
         const db = await openDatabaseAsync('gym-tracker.db');
         await migrateDatabase(db);
         setExerciseRepository(new SQLiteExerciseRepository(db));
+        setWorkoutRepository(new SQLiteWorkoutRepository(db));
       } catch {
         setDatabaseError(true);
       }
@@ -46,31 +52,34 @@ export default function App() {
     void initializeDatabase();
   }, []);
 
-  const content =
-    activeSection === 'exercises' ? (
-      databaseError ? (
-        <View style={styles.content}>
-          <Text style={styles.title}>Упражнения</Text>
-          <Text accessibilityRole="alert" style={styles.errorState}>
-            Не удалось открыть локальное хранилище.
-          </Text>
-        </View>
-      ) : exerciseRepository ? (
-        <ExerciseCatalog repository={exerciseRepository} />
-      ) : (
-        <View style={styles.loadingState}>
-          <ActivityIndicator color="#111827" />
-        </View>
-      )
-    ) : (
-      <View style={styles.content}>
-        <Text style={styles.eyebrow}>GYMTRACKER</Text>
-        <Text style={styles.title}>{activeLabel}</Text>
-        <Text style={styles.emptyState}>
-          Раздел готов к следующим этапам разработки.
-        </Text>
-      </View>
-    );
+  const repositoriesAreReady = exerciseRepository && workoutRepository;
+  const content = databaseError ? (
+    <View style={styles.content}>
+      <Text style={styles.title}>{activeLabel}</Text>
+      <Text accessibilityRole="alert" style={styles.errorState}>
+        Не удалось открыть локальное хранилище.
+      </Text>
+    </View>
+  ) : !repositoriesAreReady ? (
+    <View style={styles.loadingState}>
+      <ActivityIndicator color="#111827" />
+    </View>
+  ) : activeSection === 'exercises' ? (
+    <ExerciseCatalog repository={exerciseRepository} />
+  ) : activeSection === 'workouts' ? (
+    <WorkoutScreen
+      exerciseRepository={exerciseRepository}
+      workoutRepository={workoutRepository}
+    />
+  ) : (
+    <View style={styles.content}>
+      <Text style={styles.eyebrow}>GYMTRACKER</Text>
+      <Text style={styles.title}>{activeLabel}</Text>
+      <Text style={styles.emptyState}>
+        Раздел готов к следующим этапам разработки.
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>

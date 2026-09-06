@@ -71,6 +71,29 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
     CREATE UNIQUE INDEX exercises_active_name_unique
       ON exercises (normalized_name)
       WHERE is_archived = 0;
+
+    CREATE TABLE IF NOT EXISTS workouts (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL UNIQUE CHECK (date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS workout_exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      workout_id TEXT NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+      exercise_id TEXT NOT NULL REFERENCES exercises(id),
+      position INTEGER NOT NULL CHECK (position >= 0),
+      UNIQUE (workout_id, exercise_id),
+      UNIQUE (workout_id, position)
+    );
+    CREATE TABLE IF NOT EXISTS exercise_sets (
+      id TEXT PRIMARY KEY NOT NULL,
+      workout_exercise_id TEXT NOT NULL REFERENCES workout_exercises(id) ON DELETE CASCADE,
+      weight REAL NOT NULL CHECK (weight >= 0),
+      repetitions INTEGER NOT NULL CHECK (repetitions > 0),
+      position INTEGER NOT NULL CHECK (position >= 0),
+      UNIQUE (workout_exercise_id, position)
+    );
   `);
 }
 

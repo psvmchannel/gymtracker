@@ -1,6 +1,7 @@
 node_modules/
 .expo/
 coverage/
+dist/
 npm-debug.log*
 *.tsbuildinfo
 .DS_Store

@@ -51,7 +51,7 @@ export function WorkoutScreen({
   const [isSaving, setIsSaving] = useState(false);
 
   const refresh = useCallback(
-    async (selectedId?: string) => {
+    async (selectedId?: string | null) => {
       const [nextWorkouts, nextExercises] = await Promise.all([
         workoutRepository.list(),
         exerciseRepository.listActive(),
@@ -59,8 +59,8 @@ export function WorkoutScreen({
       setWorkouts(nextWorkouts);
       setActiveExercises(nextExercises);
 
-      const id = selectedId ?? selected?.id;
-      if (id) setSelected(await workoutRepository.get(id));
+      const id = selectedId === undefined ? selected?.id : selectedId;
+      setSelected(id ? await workoutRepository.get(id) : null);
     },
     [exerciseRepository, selected?.id, workoutRepository],
   );
@@ -110,9 +110,50 @@ export function WorkoutScreen({
     });
   }
 
+  async function cloneWorkout() {
+    if (!selected) return;
+    const validation = validateWorkoutDate(date);
+    if (!validation.ok) {
+      setError(validation.message);
+      return;
+    }
+    await runMutation(async () => {
+      const clone = await workoutRepository.clone(
+        selected.id,
+        validation.value,
+        now(),
+      );
+      await refresh(clone.id);
+    });
+  }
+
+  function confirmDeleteWorkout() {
+    if (!selected) return;
+    Alert.alert(
+      'Удалить тренировку?',
+      `Тренировка за ${selected.date} и все её подходы будут удалены.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () =>
+            void runMutation(async () => {
+              await workoutRepository.delete(selected.id);
+              await refresh(null);
+            }),
+        },
+      ],
+    );
+  }
+
   async function openWorkout(id: string) {
     setError(null);
-    setSelected(await workoutRepository.get(id));
+    try {
+      setSelected(await workoutRepository.get(id));
+    } catch {
+      setError('Не удалось открыть тренировку.');
+    }
   }
 
   async function addExercise(exerciseId: string) {
@@ -244,7 +285,22 @@ export function WorkoutScreen({
 
         {selected ? (
           <>
-            <Text style={styles.sectionTitle}>Тренировка {selected.date}</Text>
+            <View style={styles.workoutHeader}>
+              <Text style={styles.sectionTitle}>
+                Тренировка {selected.date}
+              </Text>
+              <View style={styles.workoutActions}>
+                <Pressable
+                  disabled={isSaving}
+                  onPress={() => void cloneWorkout()}
+                >
+                  <Text style={styles.cloneText}>Клонировать на дату выше</Text>
+                </Pressable>
+                <Pressable disabled={isSaving} onPress={confirmDeleteWorkout}>
+                  <Text style={styles.deleteText}>Удалить тренировку</Text>
+                </Pressable>
+              </View>
+            </View>
 
             {selected.exercises.map((workoutExercise) => {
               const draft = setDrafts[workoutExercise.id] ?? EMPTY_SET;
@@ -259,6 +315,7 @@ export function WorkoutScreen({
                     workoutExercise.sets.map((set, index) => (
                       <View key={set.id} style={styles.setRow}>
                         <Pressable
+                          disabled={isSaving}
                           onPress={() => {
                             setEditingSet({
                               id: set.id,
@@ -278,7 +335,10 @@ export function WorkoutScreen({
                             {index + 1}. {set.weight} кг × {set.repetitions}
                           </Text>
                         </Pressable>
-                        <Pressable onPress={() => confirmDeleteSet(set.id)}>
+                        <Pressable
+                          disabled={isSaving}
+                          onPress={() => confirmDeleteSet(set.id)}
+                        >
                           <Text style={styles.deleteText}>Удалить</Text>
                         </Pressable>
                       </View>
@@ -313,8 +373,12 @@ export function WorkoutScreen({
                       value={draft.repetitions}
                     />
                     <Pressable
+                      disabled={isSaving}
                       onPress={() => void saveSet(workoutExercise.id)}
-                      style={styles.smallButton}
+                      style={[
+                        styles.smallButton,
+                        isSaving && styles.disabledButton,
+                      ]}
                     >
                       <Text style={styles.primaryButtonText}>
                         {editingSet?.workoutExerciseId === workoutExercise.id
@@ -339,9 +403,13 @@ export function WorkoutScreen({
                 .filter((exercise) => !addedExerciseIds.has(exercise.id))
                 .map((exercise) => (
                   <Pressable
+                    disabled={isSaving}
                     key={exercise.id}
                     onPress={() => void addExercise(exercise.id)}
-                    style={styles.exerciseButton}
+                    style={[
+                      styles.exerciseButton,
+                      isSaving && styles.disabledButton,
+                    ]}
                   >
                     <Text style={styles.exerciseButtonText}>
                       {exercise.name}
@@ -392,6 +460,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   primaryButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  disabledButton: { opacity: 0.55 },
   error: { color: '#b91c1c', fontSize: 14, marginTop: 12 },
   workoutList: { gap: 8, paddingVertical: 18 },
   dateButton: {
@@ -410,6 +479,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 22,
   },
+  workoutHeader: { marginTop: 22 },
+  workoutActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 4,
+  },
+  cloneText: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,

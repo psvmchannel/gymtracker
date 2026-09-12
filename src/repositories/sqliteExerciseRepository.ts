@@ -111,6 +111,15 @@ export class SQLiteExerciseRepository implements ExerciseRepository {
     return rows.map(mapExercise);
   }
 
+  async listAll(): Promise<Exercise[]> {
+    const rows = await this.db.getAllAsync<ExerciseRow>(
+      `SELECT id, name, muscle_group, is_archived, created_at, updated_at
+       FROM exercises
+       ORDER BY is_archived, name COLLATE NOCASE, created_at`,
+    );
+    return rows.map(mapExercise);
+  }
+
   async create(draft: ExerciseDraft, now: Date): Promise<Exercise> {
     await this.assertNameAvailable(draft.name);
     const timestamp = now.toISOString();
@@ -152,6 +161,31 @@ export class SQLiteExerciseRepository implements ExerciseRepository {
     }
 
     return mapExercise(row);
+  }
+
+  async delete(id: string, now: Date): Promise<'deleted' | 'archived'> {
+    const usage = await this.db.getFirstAsync<{ is_used: number }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM workout_exercises WHERE exercise_id = ?
+       ) AS is_used`,
+      id,
+    );
+
+    if (usage?.is_used) {
+      await this.db.runAsync(
+        `UPDATE exercises SET is_archived = 1, updated_at = ?
+         WHERE id = ? AND is_archived = 0`,
+        now.toISOString(),
+        id,
+      );
+      return 'archived';
+    }
+
+    await this.db.runAsync(
+      'DELETE FROM exercises WHERE id = ? AND is_archived = 0',
+      id,
+    );
+    return 'deleted';
   }
 
   private async assertNameAvailable(name: string, exceptId?: string) {

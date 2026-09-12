@@ -65,4 +65,41 @@ describe('SQLiteExerciseRepository', () => {
       '2026-09-06T10:00:00.000Z',
     );
   });
+
+  it('удаляет упражнение без истории окончательно', async () => {
+    const db = {
+      getFirstAsync: jest.fn(async () => ({ is_used: 0 })),
+      runAsync: jest.fn(async () => ({ changes: 1 })),
+    } as unknown as SQLiteDatabase;
+
+    await expect(
+      new SQLiteExerciseRepository(db).delete(
+        'exercise-1',
+        new Date('2026-09-07T10:00:00.000Z'),
+      ),
+    ).resolves.toBe('deleted');
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM exercises'),
+      'exercise-1',
+    );
+  });
+
+  it('архивирует упражнение, которое есть в истории', async () => {
+    const db = {
+      getFirstAsync: jest.fn(async () => ({ is_used: 1 })),
+      runAsync: jest.fn(async () => ({ changes: 1 })),
+    } as unknown as SQLiteDatabase;
+
+    await expect(
+      new SQLiteExerciseRepository(db).delete(
+        'exercise-1',
+        new Date('2026-09-07T10:00:00.000Z'),
+      ),
+    ).resolves.toBe('archived');
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('SET is_archived = 1'),
+      '2026-09-07T10:00:00.000Z',
+      'exercise-1',
+    );
+  });
 });

@@ -9,6 +9,8 @@ export class DuplicateExerciseNameError extends Error {
 
 export interface ExerciseRepository {
   listActive(): Promise<Exercise[]>;
+  listAll(): Promise<Exercise[]>;
   create(draft: ExerciseDraft, now: Date): Promise<Exercise>;
   update(id: string, draft: ExerciseDraft, now: Date): Promise<Exercise>;
+  delete(id: string, now: Date): Promise<'deleted' | 'archived'>;
 }

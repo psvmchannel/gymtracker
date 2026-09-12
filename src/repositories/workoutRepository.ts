@@ -3,6 +3,7 @@ import type {
   Workout,
   WorkoutDetails,
 } from '../domain/workout';
+import type { ProgressPoint } from '../domain/progress';
 
 export class WorkoutDateConflictError extends Error {
   constructor() {
@@ -22,6 +23,9 @@ export interface WorkoutRepository {
   list(): Promise<Workout[]>;
   get(id: string): Promise<WorkoutDetails | null>;
   create(date: string, now: Date): Promise<Workout>;
+  clone(id: string, date: string, now: Date): Promise<WorkoutDetails>;
+  delete(id: string): Promise<void>;
+  getProgress(exerciseId: string): Promise<ProgressPoint[]>;
   addExercise(workoutId: string, exerciseId: string, now: Date): Promise<void>;
   addSet(
     workoutExerciseId: string,

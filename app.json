@@ -5,9 +5,15 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./public/icon-source.png",
     "ios": {
       "supportsTablet": false
     },
-    "plugins": ["expo-sqlite"]
+    "plugins": ["expo-sqlite", "expo-sharing"],
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./public/icon-source.png"
+    }
   }
 }

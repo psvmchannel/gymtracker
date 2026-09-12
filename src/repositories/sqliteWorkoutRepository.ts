@@ -7,6 +7,7 @@ import type {
   WorkoutDetails,
   WorkoutExercise,
 } from '../domain/workout';
+import type { ProgressPoint } from '../domain/progress';
 import {
   WorkoutDateConflictError,
   WorkoutExerciseConflictError,
@@ -117,6 +118,78 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
     );
     if (!row) throw new Error('Не удалось создать тренировку.');
     return mapWorkout(row);
+  }
+
+  async clone(id: string, date: string, now: Date): Promise<WorkoutDetails> {
+    const source = await this.get(id);
+    if (!source) throw new Error('Тренировка не найдена.');
+    const existing = await this.db.getFirstAsync<{ id: string }>(
+      'SELECT id FROM workouts WHERE date = ?',
+      date,
+    );
+    if (existing) throw new WorkoutDateConflictError();
+
+    const timestamp = now.toISOString();
+    let clonedId: string | null = null;
+    await this.db.withTransactionAsync(async () => {
+      const workout = await this.db.getFirstAsync<{ id: string }>(
+        `INSERT INTO workouts (id, date, created_at, updated_at)
+         VALUES (lower(hex(randomblob(16))), ?, ?, ?) RETURNING id`,
+        date,
+        timestamp,
+        timestamp,
+      );
+      if (!workout) throw new Error('Не удалось клонировать тренировку.');
+      clonedId = workout.id;
+
+      for (const exercise of source.exercises) {
+        const clonedExercise = await this.db.getFirstAsync<{ id: string }>(
+          `INSERT INTO workout_exercises (id, workout_id, exercise_id, position)
+           VALUES (lower(hex(randomblob(16))), ?, ?, ?) RETURNING id`,
+          workout.id,
+          exercise.exerciseId,
+          exercise.position,
+        );
+        if (!clonedExercise)
+          throw new Error('Не удалось клонировать упражнение.');
+        for (const set of exercise.sets) {
+          await this.db.runAsync(
+            `INSERT INTO exercise_sets (
+               id, workout_exercise_id, weight, repetitions, position
+             ) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)`,
+            clonedExercise.id,
+            set.weight,
+            set.repetitions,
+            set.position,
+          );
+        }
+      }
+    });
+
+    const clone = clonedId ? await this.get(clonedId) : null;
+    if (!clone) throw new Error('Не удалось открыть клонированную тренировку.');
+    return clone;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.runAsync('DELETE FROM workouts WHERE id = ?', id);
+  }
+
+  async getProgress(exerciseId: string): Promise<ProgressPoint[]> {
+    const rows = await this.db.getAllAsync<{
+      date: string;
+      max_weight: number;
+    }>(
+      `SELECT w.date, MAX(es.weight) AS max_weight
+       FROM workouts w
+       JOIN workout_exercises we ON we.workout_id = w.id
+       JOIN exercise_sets es ON es.workout_exercise_id = we.id
+       WHERE we.exercise_id = ?
+       GROUP BY w.id, w.date
+       ORDER BY w.date`,
+      exerciseId,
+    );
+    return rows.map((row) => ({ date: row.date, maxWeight: row.max_weight }));
   }
 
   async addExercise(

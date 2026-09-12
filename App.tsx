@@ -1,5 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-import { openDatabaseAsync } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,27 +11,27 @@ import {
 
 import { ExerciseCatalog } from './src/features/exercises/ExerciseCatalog';
 import { WorkoutScreen } from './src/features/workouts/WorkoutScreen';
+import { StatisticsScreen } from './src/features/statistics/StatisticsScreen';
 import {
   APP_SECTIONS,
   DEFAULT_SECTION,
   type SectionId,
 } from './src/navigation/sections';
-import type { ExerciseRepository } from './src/repositories/exerciseRepository';
+import { requestPersistentStorage } from './src/pwa/persistentStorage';
 import {
-  migrateDatabase,
-  SQLiteExerciseRepository,
-} from './src/repositories/sqliteExerciseRepository';
-import { SQLiteWorkoutRepository } from './src/repositories/sqliteWorkoutRepository';
-import type { WorkoutRepository } from './src/repositories/workoutRepository';
+  createRepositories,
+  type AppRepositories,
+} from './src/repositories/createRepositories';
 
 export default function App() {
   const [activeSection, setActiveSection] =
     useState<SectionId>(DEFAULT_SECTION);
-  const [exerciseRepository, setExerciseRepository] =
-    useState<ExerciseRepository | null>(null);
-  const [workoutRepository, setWorkoutRepository] =
-    useState<WorkoutRepository | null>(null);
+  const [repositories, setRepositories] = useState<AppRepositories | null>(
+    null,
+  );
+  const [dataRevision, setDataRevision] = useState(0);
   const [databaseError, setDatabaseError] = useState(false);
+  const [storageWarning, setStorageWarning] = useState(false);
   const activeLabel = APP_SECTIONS.find(
     ({ id }) => id === activeSection,
   )?.label;
@@ -40,10 +39,8 @@ export default function App() {
   useEffect(() => {
     async function initializeDatabase() {
       try {
-        const db = await openDatabaseAsync('gym-tracker.db');
-        await migrateDatabase(db);
-        setExerciseRepository(new SQLiteExerciseRepository(db));
-        setWorkoutRepository(new SQLiteWorkoutRepository(db));
+        setRepositories(await createRepositories());
+        setStorageWarning(!(await requestPersistentStorage()));
       } catch {
         setDatabaseError(true);
       }
@@ -52,7 +49,6 @@ export default function App() {
     void initializeDatabase();
   }, []);
 
-  const repositoriesAreReady = exerciseRepository && workoutRepository;
   const content = databaseError ? (
     <View style={styles.content}>
       <Text style={styles.title}>{activeLabel}</Text>
@@ -60,31 +56,39 @@ export default function App() {
         Не удалось открыть локальное хранилище.
       </Text>
     </View>
-  ) : !repositoriesAreReady ? (
+  ) : !repositories ? (
     <View style={styles.loadingState}>
       <ActivityIndicator color="#111827" />
     </View>
   ) : activeSection === 'exercises' ? (
-    <ExerciseCatalog repository={exerciseRepository} />
+    <ExerciseCatalog repository={repositories.exercises} />
   ) : activeSection === 'workouts' ? (
     <WorkoutScreen
-      exerciseRepository={exerciseRepository}
-      workoutRepository={workoutRepository}
+      exerciseRepository={repositories.exercises}
+      key={dataRevision}
+      workoutRepository={repositories.workouts}
     />
   ) : (
-    <View style={styles.content}>
-      <Text style={styles.eyebrow}>GYMTRACKER</Text>
-      <Text style={styles.title}>{activeLabel}</Text>
-      <Text style={styles.emptyState}>
-        Раздел готов к следующим этапам разработки.
-      </Text>
-    </View>
+    <StatisticsScreen
+      dataTransferRepository={repositories.dataTransfer}
+      exerciseRepository={repositories.exercises}
+      key={dataRevision}
+      onImported={() => setDataRevision((value) => value + 1)}
+      workoutRepository={repositories.workouts}
+    />
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       {content}
+
+      {storageWarning ? (
+        <Text accessibilityRole="alert" style={styles.storageWarning}>
+          Браузер не предоставил постоянное хранилище. Регулярно сохраняй
+          резервную копию.
+        </Text>
+      ) : null}
 
       <View accessibilityRole="tablist" style={styles.tabBar}>
         {APP_SECTIONS.map(({ id, label }) => {
@@ -141,6 +145,13 @@ const styles = StyleSheet.create({
   },
   errorState: { color: '#b91c1c', fontSize: 17, marginTop: 16 },
   loadingState: { alignItems: 'center', flex: 1, justifyContent: 'center' },
+  storageWarning: {
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
   tabBar: {
     backgroundColor: '#ffffff',
     borderTopColor: '#e5e7eb',

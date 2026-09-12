@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -113,6 +114,34 @@ export function ExerciseCatalog({ repository }: Props) {
     }
   }
 
+  function confirmDeleteExercise(exercise: Exercise) {
+    Alert.alert(
+      'Удалить упражнение?',
+      'Если оно использовалось в тренировках, оно будет скрыто из каталога, но останется в истории.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () =>
+            void (async () => {
+              setIsSaving(true);
+              setError(null);
+              try {
+                await repository.delete(exercise.id, new Date());
+                if (editingId === exercise.id) cancelEditing();
+                await loadExercises();
+              } catch {
+                setError('Не удалось удалить упражнение.');
+              } finally {
+                setIsSaving(false);
+              }
+            })(),
+        },
+      ],
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -185,20 +214,28 @@ export function ExerciseCatalog({ repository }: Props) {
           <Text style={styles.emptyState}>Пока нет ни одного упражнения.</Text>
         ) : (
           exercises.map((exercise) => (
-            <Pressable
-              accessibilityHint="Открывает редактирование"
-              key={exercise.id}
-              onPress={() => startEditing(exercise)}
-              style={styles.exerciseCard}
-            >
+            <View key={exercise.id} style={styles.exerciseCard}>
               <View>
                 <Text style={styles.exerciseName}>{exercise.name}</Text>
                 <Text style={styles.exerciseGroup}>
                   {MUSCLE_GROUP_LABELS[exercise.muscleGroup]}
                 </Text>
               </View>
-              <Text style={styles.editLabel}>Изменить</Text>
-            </Pressable>
+              <View style={styles.cardActions}>
+                <Pressable
+                  disabled={isSaving}
+                  onPress={() => startEditing(exercise)}
+                >
+                  <Text style={styles.editLabel}>Изменить</Text>
+                </Pressable>
+                <Pressable
+                  disabled={isSaving}
+                  onPress={() => confirmDeleteExercise(exercise)}
+                >
+                  <Text style={styles.deleteLabel}>Удалить</Text>
+                </Pressable>
+              </View>
+            </View>
           ))
         )}
       </ScrollView>
@@ -320,4 +357,6 @@ const styles = StyleSheet.create({
   exerciseName: { color: '#111827', fontSize: 17, fontWeight: '700' },
   exerciseGroup: { color: '#6b7280', fontSize: 14, marginTop: 4 },
   editLabel: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
+  cardActions: { alignItems: 'flex-end', gap: 10 },
+  deleteLabel: { color: '#b91c1c', fontSize: 14, fontWeight: '600' },
 });

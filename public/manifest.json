@@ -1,0 +1,19 @@
+{
+  "name": "GymTracker",
+  "short_name": "GymTracker",
+  "description": "Локальный дневник силовых тренировок",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f8",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/icon-source.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

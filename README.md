@@ -53,9 +53,9 @@ Production-web собирается командой `npm run export:web` в к�
 сборки скрипт создаёт service worker с хешем и точным списком файлов, чтобы PWA
 целиком заменяла кэш приложения между версиями.
 
-Постоянный адрес PWA — `https://psvmchannel.github.io/gymtracker/`. Публикация
-запускается автоматически после изменения ветки `main`; web-сборка использует
-базовый путь `/gymtracker/`.
+Постоянный адрес PWA — `https://psvmchannel.github.io/gymtracker/`. Публикацию
+вручную запускает владелец репозитория через workflow `Deploy PWA to GitHub
+Pages` в GitHub Actions; web-сборка использует базовый путь `/gymtracker/`.
 
 ## План поставки
 

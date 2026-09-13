@@ -22,6 +22,7 @@ import {
 } from '../../domain/workout';
 import type { ExerciseRepository } from '../../repositories/exerciseRepository';
 import type { WorkoutRepository } from '../../repositories/workoutRepository';
+import { confirmAction } from '../../platform/confirmAction';
 
 type Props = {
   exerciseRepository: ExerciseRepository;
@@ -129,22 +130,16 @@ export function WorkoutScreen({
 
   function confirmDeleteWorkout() {
     if (!selected) return;
-    Alert.alert(
-      'Удалить тренировку?',
-      `Тренировка за ${selected.date} и все её подходы будут удалены.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () =>
-            void runMutation(async () => {
-              await workoutRepository.delete(selected.id);
-              await refresh(null);
-            }),
-        },
-      ],
-    );
+    confirmAction({
+      title: 'Удалить тренировку?',
+      message: `Тренировка за ${selected.date} и все её подходы будут удалены.`,
+      confirmLabel: 'Удалить',
+      onConfirm: () =>
+        void runMutation(async () => {
+          await workoutRepository.delete(selected.id);
+          await refresh(null);
+        }),
+    });
   }
 
   async function openWorkout(id: string) {

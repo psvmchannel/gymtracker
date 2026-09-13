@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { parseBackupJson } from '../../domain/backup';
+import { confirmAction } from '../../platform/confirmAction';
 import type { DataTransferRepository } from '../../repositories/dataTransferRepository';
 import { exportBackupFile, pickBackupFile } from './backupFiles';
 
@@ -85,31 +86,26 @@ export function DataTransferPanel({ repository, onImported }: Props) {
   }
 
   function confirmClear() {
-    Alert.alert(
-      'Очистить все данные?',
-      'Все упражнения, тренировки и подходы будут удалены без возможности отмены. Сначала сохрани резервную копию.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить всё',
-          style: 'destructive',
-          onPress: () =>
-            void (async () => {
-              setIsBusy(true);
-              setError(null);
-              try {
-                await repository.clearAll();
-                onImported();
-                Alert.alert('Готово', 'Локальное хранилище очищено.');
-              } catch {
-                setError('Не удалось очистить локальное хранилище.');
-              } finally {
-                setIsBusy(false);
-              }
-            })(),
-        },
-      ],
-    );
+    confirmAction({
+      title: 'Очистить все данные?',
+      message:
+        'Все упражнения, тренировки и подходы будут удалены без возможности отмены. Сначала сохрани резервную копию.',
+      confirmLabel: 'Удалить всё',
+      onConfirm: () =>
+        void (async () => {
+          setIsBusy(true);
+          setError(null);
+          try {
+            await repository.clearAll();
+            onImported();
+            Alert.alert('Готово', 'Локальное хранилище очищено.');
+          } catch {
+            setError('Не удалось очистить локальное хранилище.');
+          } finally {
+            setIsBusy(false);
+          }
+        })(),
+    });
   }
 
   return (

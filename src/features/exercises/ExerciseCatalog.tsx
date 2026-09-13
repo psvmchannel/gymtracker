@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +19,7 @@ import {
   type ExerciseDraft,
   type MuscleGroup,
 } from '../../domain/exercise';
+import { confirmAction } from '../../platform/confirmAction';
 import type { ExerciseRepository } from '../../repositories/exerciseRepository';
 
 type Props = {
@@ -115,31 +115,26 @@ export function ExerciseCatalog({ repository }: Props) {
   }
 
   function confirmDeleteExercise(exercise: Exercise) {
-    Alert.alert(
-      'Удалить упражнение?',
-      'Если оно использовалось в тренировках, оно будет скрыто из каталога, но останется в истории.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () =>
-            void (async () => {
-              setIsSaving(true);
-              setError(null);
-              try {
-                await repository.delete(exercise.id, new Date());
-                if (editingId === exercise.id) cancelEditing();
-                await loadExercises();
-              } catch {
-                setError('Не удалось удалить упражнение.');
-              } finally {
-                setIsSaving(false);
-              }
-            })(),
-        },
-      ],
-    );
+    confirmAction({
+      title: 'Удалить упражнение?',
+      message:
+        'Если оно использовалось в тренировках, оно будет скрыто из каталога, но останется в истории.',
+      confirmLabel: 'Удалить',
+      onConfirm: () =>
+        void (async () => {
+          setIsSaving(true);
+          setError(null);
+          try {
+            await repository.delete(exercise.id, new Date());
+            if (editingId === exercise.id) cancelEditing();
+            await loadExercises();
+          } catch {
+            setError('Не удалось удалить упражнение.');
+          } finally {
+            setIsSaving(false);
+          }
+        })(),
+    });
   }
 
   return (

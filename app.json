@@ -10,6 +10,9 @@
       "supportsTablet": false
     },
     "plugins": ["expo-sqlite", "expo-sharing"],
+    "experiments": {
+      "baseUrl": "/gymtracker"
+    },
     "web": {
       "bundler": "metro",
       "output": "single",

@@ -6,11 +6,13 @@ function addLink(rel: string, href: string) {
   document.head.appendChild(link);
 }
 
-addLink('manifest', '/manifest.json');
-addLink('apple-touch-icon', '/icon-source.png');
+const BASE_PATH = '/gymtracker';
+
+addLink('manifest', `${BASE_PATH}/manifest.json`);
+addLink('apple-touch-icon', `${BASE_PATH}/icon-source.png`);
 
 if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js');
+    void navigator.serviceWorker.register(`${BASE_PATH}/sw.js`);
   });
 }

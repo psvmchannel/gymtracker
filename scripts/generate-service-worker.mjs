@@ -4,6 +4,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
 const outputDirectory = join(process.cwd(), 'dist');
+const basePath = '/gymtracker';
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -18,7 +19,8 @@ async function collectFiles(directory) {
 
 const files = await collectFiles(outputDirectory);
 const urls = files.map(
-  (file) => `/${relative(outputDirectory, file).split(sep).join('/')}`,
+  (file) =>
+    `${basePath}/${relative(outputDirectory, file).split(sep).join('/')}`,
 );
 const hash = createHash('sha256')
   .update(
@@ -40,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  event.respondWith(caches.match(event.request).then((cached) => cached || (event.request.mode === 'navigate' ? caches.match('/index.html') : fetch(event.request))));
+  event.respondWith(caches.match(event.request).then((cached) => cached || (event.request.mode === 'navigate' ? caches.match('${basePath}/index.html') : fetch(event.request))));
 });
 `;
 await writeFile(join(outputDirectory, 'sw.js'), serviceWorker);

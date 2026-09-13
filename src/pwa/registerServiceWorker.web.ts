@@ -6,12 +6,33 @@ function addLink(rel: string, href: string) {
   document.head.appendChild(link);
 }
 
+export function withSafeAreaViewport(content: string): string {
+  return content.includes('viewport-fit=')
+    ? content
+    : `${content}, viewport-fit=cover`;
+}
+
+function enableSafeAreaInsets() {
+  const viewport = document.querySelector<HTMLMetaElement>(
+    'meta[name="viewport"]',
+  );
+  if (!viewport) return;
+  viewport.content = withSafeAreaViewport(viewport.content);
+}
+
 const BASE_PATH = '/gymtracker';
 
-addLink('manifest', `${BASE_PATH}/manifest.json`);
-addLink('apple-touch-icon', `${BASE_PATH}/icon-source.png`);
+if (typeof document !== 'undefined') {
+  enableSafeAreaInsets();
+  addLink('manifest', `${BASE_PATH}/manifest.json`);
+  addLink('apple-touch-icon', `${BASE_PATH}/icon-source.png`);
+}
 
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if (
+  typeof navigator !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  process.env.NODE_ENV === 'production'
+) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register(`${BASE_PATH}/sw.js`);
   });

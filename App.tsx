@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExerciseCatalog } from './src/features/exercises/ExerciseCatalog';
 import { WorkoutScreen } from './src/features/workouts/WorkoutScreen';
@@ -79,39 +79,41 @@ export default function App() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      {content}
+    <SafeAreaProvider style={styles.safeArea}>
+      <SafeAreaView edges={['bottom']} style={styles.safeArea}>
+        <StatusBar style="dark" />
+        {content}
 
-      {storageWarning ? (
-        <Text accessibilityRole="alert" style={styles.storageWarning}>
-          Браузер не предоставил постоянное хранилище. Регулярно сохраняй
-          резервную копию.
-        </Text>
-      ) : null}
+        {storageWarning ? (
+          <Text accessibilityRole="alert" style={styles.storageWarning}>
+            Браузер не предоставил постоянное хранилище. Регулярно сохраняй
+            резервную копию.
+          </Text>
+        ) : null}
 
-      <View accessibilityRole="tablist" style={styles.tabBar}>
-        {APP_SECTIONS.map(({ id, label }) => {
-          const isActive = id === activeSection;
+        <View accessibilityRole="tablist" style={styles.tabBar}>
+          {APP_SECTIONS.map(({ id, label }) => {
+            const isActive = id === activeSection;
 
-          return (
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-              key={id}
-              onPress={() => setActiveSection(id)}
-              style={[styles.tab, isActive && styles.activeTab]}
-            >
-              <Text
-                style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+            return (
+              <Pressable
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                key={id}
+                onPress={() => setActiveSection(id)}
+                style={[styles.tab, isActive && styles.activeTab]}
               >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </SafeAreaView>
+                <Text
+                  style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -193,18 +192,16 @@ export function WorkoutScreen({
 
   function confirmDeleteSet(id: string) {
     if (!selected) return;
-    Alert.alert('Удалить подход?', 'Это действие нельзя отменить.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: () =>
-          void runMutation(async () => {
-            await workoutRepository.deleteSet(id, now());
-            await refresh(selected.id);
-          }),
-      },
-    ]);
+    confirmAction({
+      title: 'Удалить подход?',
+      message: 'Это действие нельзя отменить.',
+      confirmLabel: 'Удалить',
+      onConfirm: () =>
+        void runMutation(async () => {
+          await workoutRepository.deleteSet(id, now());
+          await refresh(selected.id);
+        }),
+    });
   }
 
   const addedExerciseIds = new Set(

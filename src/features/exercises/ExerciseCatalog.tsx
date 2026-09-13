@@ -160,6 +160,7 @@ export function ExerciseCatalog({ repository }: Props) {
             maxLength={100}
             onChangeText={(name) => setDraft((value) => ({ ...value, name }))}
             placeholder="Например, жим лёжа"
+            placeholderTextColor="#6b7280"
             style={styles.input}
             value={draft.name}
           />

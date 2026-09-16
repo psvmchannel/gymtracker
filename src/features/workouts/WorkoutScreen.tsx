@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
 import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  Animated,
+  type GestureResponderHandlers,
   KeyboardAvoidingView,
+  type LayoutChangeEvent,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -10,7 +20,7 @@ import {
   View,
 } from 'react-native';
 
-import type { Exercise } from '../../domain/exercise';
+import { MUSCLE_GROUP_LABELS, type Exercise } from '../../domain/exercise';
 import {
   formatLocalDate,
   validateExerciseSet,
@@ -31,6 +41,9 @@ type Props = {
 
 const EMPTY_SET: ExerciseSetDraft = { weight: '', repetitions: '' };
 
+type ExerciseLayout = { height: number; y: number };
+type DragPreview = { id: string; targetIndex: number };
+
 export function WorkoutScreen({
   exerciseRepository,
   workoutRepository,
@@ -49,6 +62,10 @@ export function WorkoutScreen({
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const [exerciseLayouts, setExerciseLayouts] = useState<
+    Record<string, ExerciseLayout>
+  >({});
 
   const refresh = useCallback(
     async (selectedId?: string | null) => {
@@ -158,6 +175,76 @@ export function WorkoutScreen({
     });
   }
 
+  function moveExercise(workoutExerciseId: string, targetIndex: number) {
+    if (!selected || isSaving) return;
+    const sourceIndex = selected.exercises.findIndex(
+      ({ id }) => id === workoutExerciseId,
+    );
+    if (sourceIndex < 0 || sourceIndex === targetIndex) return;
+
+    const exercises = [...selected.exercises];
+    const [moved] = exercises.splice(sourceIndex, 1);
+    if (!moved) return;
+    exercises.splice(targetIndex, 0, moved);
+    const reordered = exercises.map((exercise, position) => ({
+      ...exercise,
+      position,
+    }));
+    const workoutId = selected.id;
+    setSelected({ ...selected, exercises: reordered });
+    void runMutation(async () => {
+      try {
+        await workoutRepository.reorderExercises(
+          workoutId,
+          reordered.map(({ id }) => id),
+          now(),
+        );
+      } finally {
+        await refresh(workoutId);
+      }
+    });
+  }
+
+  function getExerciseDragTarget(workoutExerciseId: string, offsetY: number) {
+    if (!selected) return;
+    const source = exerciseLayouts[workoutExerciseId];
+    if (!source) return;
+    const draggedCenter = source.y + source.height / 2 + offsetY;
+    let targetIndex = selected.exercises.findIndex(
+      ({ id }) => id === workoutExerciseId,
+    );
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    selected.exercises.forEach((exercise, index) => {
+      const layout = exerciseLayouts[exercise.id];
+      if (!layout) return;
+      const distance = Math.abs(draggedCenter - (layout.y + layout.height / 2));
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        targetIndex = index;
+      }
+    });
+    return targetIndex;
+  }
+
+  function previewExerciseDrag(workoutExerciseId: string, offsetY: number) {
+    const targetIndex = getExerciseDragTarget(workoutExerciseId, offsetY);
+    if (targetIndex === undefined) return;
+    setDragPreview((current) =>
+      current?.id === workoutExerciseId && current.targetIndex === targetIndex
+        ? current
+        : { id: workoutExerciseId, targetIndex },
+    );
+  }
+
+  function finishExerciseDrag(workoutExerciseId: string, offsetY: number) {
+    const targetIndex = getExerciseDragTarget(workoutExerciseId, offsetY);
+    setDragPreview(null);
+    if (targetIndex !== undefined) {
+      moveExercise(workoutExerciseId, targetIndex);
+    }
+  }
+
   async function saveSet(workoutExerciseId: string) {
     const draft = setDrafts[workoutExerciseId] ?? EMPTY_SET;
     const validation = validateExerciseSet(draft);
@@ -216,6 +303,7 @@ export function WorkoutScreen({
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!dragPreview}
       >
         <Text style={styles.eyebrow}>GYMTRACKER</Text>
         <Text style={styles.title}>Тренировки</Text>
@@ -296,8 +384,61 @@ export function WorkoutScreen({
 
             {selected.exercises.map((workoutExercise) => {
               const draft = setDrafts[workoutExercise.id] ?? EMPTY_SET;
+              const sourceIndex = dragPreview
+                ? selected.exercises.findIndex(
+                    ({ id }) => id === dragPreview.id,
+                  )
+                : -1;
+              const currentIndex = selected.exercises.findIndex(
+                ({ id }) => id === workoutExercise.id,
+              );
+              const draggedLayout = dragPreview
+                ? exerciseLayouts[dragPreview.id]
+                : undefined;
+              const displacedOffset = draggedLayout
+                ? sourceIndex < dragPreview!.targetIndex &&
+                  currentIndex > sourceIndex &&
+                  currentIndex <= dragPreview!.targetIndex
+                  ? -(draggedLayout.height + 12)
+                  : sourceIndex > dragPreview!.targetIndex &&
+                      currentIndex >= dragPreview!.targetIndex &&
+                      currentIndex < sourceIndex
+                    ? draggedLayout.height + 12
+                    : 0
+                : 0;
               return (
-                <View key={workoutExercise.id} style={styles.card}>
+                <DraggableExerciseCard
+                  disabled={isSaving}
+                  exerciseName={workoutExercise.exerciseName}
+                  isDragging={dragPreview?.id === workoutExercise.id}
+                  key={workoutExercise.id}
+                  onDragCancel={() => setDragPreview(null)}
+                  onDragEnd={(offsetY) =>
+                    finishExerciseDrag(workoutExercise.id, offsetY)
+                  }
+                  onDragMove={(offsetY) =>
+                    previewExerciseDrag(workoutExercise.id, offsetY)
+                  }
+                  onDragStart={() =>
+                    setDragPreview({
+                      id: workoutExercise.id,
+                      targetIndex: currentIndex,
+                    })
+                  }
+                  onLayout={(event) => {
+                    const { height, y } = event.nativeEvent.layout;
+                    setExerciseLayouts((current) => {
+                      const previous = current[workoutExercise.id];
+                      return previous?.height === height && previous.y === y
+                        ? current
+                        : {
+                            ...current,
+                            [workoutExercise.id]: { height, y },
+                          };
+                    });
+                  }}
+                  previewOffset={displacedOffset}
+                >
                   <Text style={styles.cardTitle}>
                     {workoutExercise.exerciseName}
                   </Text>
@@ -328,10 +469,17 @@ export function WorkoutScreen({
                           </Text>
                         </Pressable>
                         <Pressable
+                          accessibilityLabel={`Удалить подход ${index + 1} упражнения «${workoutExercise.exerciseName}»`}
+                          accessibilityRole="button"
                           disabled={isSaving}
+                          hitSlop={8}
                           onPress={() => confirmDeleteSet(set.id)}
+                          style={({ pressed }) => [
+                            styles.deleteSetButton,
+                            pressed && styles.pressedIconButton,
+                          ]}
                         >
-                          <Text style={styles.deleteText}>Удалить</Text>
+                          <Text style={styles.deleteSetIcon}>×</Text>
                         </Pressable>
                       </View>
                     ))
@@ -379,7 +527,7 @@ export function WorkoutScreen({
                       </Text>
                     </Pressable>
                   </View>
-                </View>
+                </DraggableExerciseCard>
               );
             })}
 
@@ -403,9 +551,14 @@ export function WorkoutScreen({
                       isSaving && styles.disabledButton,
                     ]}
                   >
-                    <Text style={styles.exerciseButtonText}>
-                      {exercise.name}
-                    </Text>
+                    <View style={styles.exerciseButtonDetails}>
+                      <Text style={styles.exerciseButtonText}>
+                        {exercise.name}
+                      </Text>
+                      <Text style={styles.exerciseButtonGroup}>
+                        {MUSCLE_GROUP_LABELS[exercise.muscleGroup]}
+                      </Text>
+                    </View>
                     <Text style={styles.addText}>Добавить</Text>
                   </Pressable>
                 ))
@@ -414,6 +567,115 @@ export function WorkoutScreen({
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function DraggableExerciseCard({
+  children,
+  disabled,
+  exerciseName,
+  isDragging,
+  onDragCancel,
+  onDragEnd,
+  onDragMove,
+  onDragStart,
+  onLayout,
+  previewOffset,
+}: {
+  children: ReactNode;
+  disabled: boolean;
+  exerciseName: string;
+  isDragging: boolean;
+  onDragCancel: () => void;
+  onDragEnd: (offsetY: number) => void;
+  onDragMove: (offsetY: number) => void;
+  onDragStart: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+  previewOffset: number;
+}) {
+  const [translateY] = useState(() => new Animated.Value(0));
+  const dragCallbacks = useRef({
+    disabled,
+    onDragCancel,
+    onDragEnd,
+    onDragMove,
+    onDragStart,
+  });
+  useEffect(() => {
+    dragCallbacks.current = {
+      disabled,
+      onDragCancel,
+      onDragEnd,
+      onDragMove,
+      onDragStart,
+    };
+  }, [disabled, onDragCancel, onDragEnd, onDragMove, onDragStart]);
+  // Responder callbacks read current props only after a gesture event.
+  // eslint-disable-next-line react-hooks/refs
+  const [panResponder] = useState(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !dragCallbacks.current.disabled,
+      onStartShouldSetPanResponderCapture: () =>
+        !dragCallbacks.current.disabled,
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        !dragCallbacks.current.disabled && Math.abs(gesture.dy) > 4,
+      onMoveShouldSetPanResponderCapture: (_, gesture) =>
+        !dragCallbacks.current.disabled && Math.abs(gesture.dy) > 4,
+      onPanResponderGrant: () => dragCallbacks.current.onDragStart(),
+      onPanResponderMove: (_, gesture) => {
+        translateY.setValue(gesture.dy);
+        dragCallbacks.current.onDragMove(gesture.dy);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        translateY.setValue(0);
+        dragCallbacks.current.onDragEnd(gesture.dy);
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderTerminate: () => {
+        translateY.setValue(0);
+        dragCallbacks.current.onDragCancel();
+      },
+      onShouldBlockNativeResponder: () => true,
+    }),
+  );
+
+  return (
+    <Animated.View
+      onLayout={onLayout}
+      style={[
+        styles.card,
+        isDragging && styles.draggingCard,
+        {
+          transform: [{ translateY }, { translateY: previewOffset }],
+        },
+      ]}
+    >
+      {children}
+      <DragHandle
+        exerciseName={exerciseName}
+        panHandlers={panResponder.panHandlers}
+      />
+    </Animated.View>
+  );
+}
+
+function DragHandle({
+  exerciseName,
+  panHandlers,
+}: {
+  exerciseName: string;
+  panHandlers: GestureResponderHandlers;
+}) {
+  return (
+    <View
+      {...panHandlers}
+      accessibilityHint="Перетащите вверх или вниз"
+      accessibilityLabel={`Изменить порядок упражнения «${exerciseName}»`}
+      accessibilityRole="button"
+      style={styles.dragHandle}
+    >
+      <Text style={styles.dragHandleText}>≡</Text>
+    </View>
   );
 }
 
@@ -485,12 +747,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
   },
-  cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' },
+  draggingCard: { elevation: 8, zIndex: 2 },
+  cardTitle: {
+    color: '#111827',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingRight: 44,
+  },
+  dragHandle: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 44,
+    zIndex: 1,
+  },
+  dragHandleText: { color: '#6b7280', fontSize: 28, lineHeight: 30 },
   empty: { color: '#6b7280', fontSize: 15, marginTop: 12 },
   setRow: { alignItems: 'center', flexDirection: 'row', marginTop: 12 },
   setSummary: { flex: 1 },
   setText: { color: '#111827', fontSize: 16 },
   deleteText: { color: '#b91c1c', fontSize: 13, fontWeight: '600' },
+  deleteSetButton: {
+    alignItems: 'center',
+    borderRadius: 10,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  pressedIconButton: { backgroundColor: '#f3f4f6' },
+  deleteSetIcon: { color: '#b91c1c', fontSize: 28, lineHeight: 30 },
   setForm: { flexDirection: 'row', gap: 8, marginTop: 14 },
   setInput: { flex: 1, minWidth: 0 },
   exerciseButton: {
@@ -502,6 +790,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     padding: 14,
   },
+  exerciseButtonDetails: { flex: 1, minWidth: 0 },
   exerciseButtonText: { color: '#111827', fontSize: 16, fontWeight: '600' },
-  addText: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
+  exerciseButtonGroup: { color: '#6b7280', fontSize: 13, marginTop: 3 },
+  addText: {
+    color: '#2563eb',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
 });

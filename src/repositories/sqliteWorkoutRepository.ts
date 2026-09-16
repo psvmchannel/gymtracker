@@ -218,6 +218,47 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
     await this.touchWorkout(workoutId, now);
   }
 
+  async reorderExercises(
+    workoutId: string,
+    workoutExerciseIds: string[],
+    now: Date,
+  ): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      const current = await this.db.getAllAsync<{ id: string }>(
+        `SELECT id FROM workout_exercises
+         WHERE workout_id = ? ORDER BY position`,
+        workoutId,
+      );
+      const currentIds = new Set(current.map(({ id }) => id));
+      if (
+        current.length !== workoutExerciseIds.length ||
+        new Set(workoutExerciseIds).size !== workoutExerciseIds.length ||
+        workoutExerciseIds.some((id) => !currentIds.has(id))
+      ) {
+        throw new Error('Некорректный порядок упражнений.');
+      }
+
+      if (current.length > 0) {
+        await this.db.runAsync(
+          `UPDATE workout_exercises SET position = position + ?
+           WHERE workout_id = ?`,
+          current.length,
+          workoutId,
+        );
+      }
+      for (const [position, id] of workoutExerciseIds.entries()) {
+        await this.db.runAsync(
+          `UPDATE workout_exercises SET position = ?
+           WHERE id = ? AND workout_id = ?`,
+          position,
+          id,
+          workoutId,
+        );
+      }
+      await this.touchWorkout(workoutId, now);
+    });
+  }
+
   async addSet(
     workoutExerciseId: string,
     draft: ParsedExerciseSet,

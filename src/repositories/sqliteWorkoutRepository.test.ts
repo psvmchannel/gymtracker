@@ -97,6 +97,60 @@ describe('SQLiteWorkoutRepository', () => {
     ).rejects.toBeInstanceOf(WorkoutDateConflictError);
   });
 
+  it('атомарно сохраняет полный новый порядок упражнений', async () => {
+    const db = {
+      getAllAsync: jest.fn(async () => [{ id: 'first' }, { id: 'second' }]),
+      runAsync: jest.fn(async () => ({ changes: 1 })),
+      withTransactionAsync: jest.fn(async (action: () => Promise<void>) =>
+        action(),
+      ),
+    } as unknown as SQLiteDatabase;
+    const now = new Date('2026-09-16T12:00:00.000Z');
+
+    await new SQLiteWorkoutRepository(db).reorderExercises(
+      'workout-1',
+      ['second', 'first'],
+      now,
+    );
+
+    expect(db.withTransactionAsync).toHaveBeenCalledTimes(1);
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('SET position = position + ?'),
+      2,
+      'workout-1',
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('SET position = ?'),
+      0,
+      'second',
+      'workout-1',
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE workouts SET updated_at'),
+      now.toISOString(),
+      'workout-1',
+    );
+  });
+
+  it('не сохраняет неполный порядок упражнений', async () => {
+    const db = {
+      getAllAsync: jest.fn(async () => [{ id: 'first' }, { id: 'second' }]),
+      runAsync: jest.fn(async () => ({ changes: 1 })),
+      withTransactionAsync: jest.fn(async (action: () => Promise<void>) =>
+        action(),
+      ),
+    } as unknown as SQLiteDatabase;
+
+    await expect(
+      new SQLiteWorkoutRepository(db).reorderExercises(
+        'workout-1',
+        ['first'],
+        new Date(),
+      ),
+    ).rejects.toThrow('Некорректный порядок упражнений.');
+    expect(db.runAsync).not.toHaveBeenCalled();
+  });
+
   it('клонирует тренировку с упражнениями и подходами в одной транзакции', async () => {
     const firstResults = [
       {

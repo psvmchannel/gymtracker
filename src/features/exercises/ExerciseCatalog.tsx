@@ -21,6 +21,7 @@ import {
 } from '../../domain/exercise';
 import { confirmAction } from '../../platform/confirmAction';
 import type { ExerciseRepository } from '../../repositories/exerciseRepository';
+import { groupExercises } from './groupExercises';
 
 type Props = {
   repository: ExerciseRepository;
@@ -209,28 +210,52 @@ export function ExerciseCatalog({ repository }: Props) {
         ) : exercises.length === 0 ? (
           <Text style={styles.emptyState}>Пока нет ни одного упражнения.</Text>
         ) : (
-          exercises.map((exercise) => (
-            <View key={exercise.id} style={styles.exerciseCard}>
-              <View>
-                <Text style={styles.exerciseName}>{exercise.name}</Text>
-                <Text style={styles.exerciseGroup}>
-                  {MUSCLE_GROUP_LABELS[exercise.muscleGroup]}
-                </Text>
-              </View>
-              <View style={styles.cardActions}>
-                <Pressable
-                  disabled={isSaving}
-                  onPress={() => startEditing(exercise)}
-                >
-                  <Text style={styles.editLabel}>Изменить</Text>
-                </Pressable>
-                <Pressable
-                  disabled={isSaving}
-                  onPress={() => confirmDeleteExercise(exercise)}
-                >
-                  <Text style={styles.deleteLabel}>Удалить</Text>
-                </Pressable>
-              </View>
+          groupExercises(exercises).map((group) => (
+            <View key={group.muscleGroup} style={styles.exerciseSection}>
+              <Text style={styles.exerciseSectionTitle}>
+                {MUSCLE_GROUP_LABELS[group.muscleGroup]}
+              </Text>
+              {group.exercises.map((exercise) => (
+                <View key={exercise.id} style={styles.exerciseCard}>
+                  <View style={styles.exerciseDetails}>
+                    <Text
+                      ellipsizeMode="tail"
+                      numberOfLines={2}
+                      style={styles.exerciseName}
+                    >
+                      {exercise.name}
+                    </Text>
+                  </View>
+                  <View style={styles.cardActions}>
+                    <Pressable
+                      accessibilityLabel={`Изменить упражнение «${exercise.name}»`}
+                      accessibilityRole="button"
+                      disabled={isSaving}
+                      hitSlop={8}
+                      onPress={() => startEditing(exercise)}
+                      style={({ pressed }) => [
+                        styles.iconButton,
+                        pressed && styles.pressedIconButton,
+                      ]}
+                    >
+                      <Text style={styles.editIcon}>✎</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Удалить упражнение «${exercise.name}»`}
+                      accessibilityRole="button"
+                      disabled={isSaving}
+                      hitSlop={8}
+                      onPress={() => confirmDeleteExercise(exercise)}
+                      style={({ pressed }) => [
+                        styles.iconButton,
+                        pressed && styles.pressedIconButton,
+                      ]}
+                    >
+                      <Text style={styles.deleteIcon}>×</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
             </View>
           ))
         )}
@@ -341,6 +366,15 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   emptyState: { color: '#6b7280', fontSize: 16 },
+  exerciseSection: { marginBottom: 8 },
+  exerciseSectionTitle: {
+    color: '#4b5563',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
   exerciseCard: {
     alignItems: 'center',
     backgroundColor: '#ffffff',
@@ -348,11 +382,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  exerciseName: { color: '#111827', fontSize: 17, fontWeight: '700' },
-  exerciseGroup: { color: '#6b7280', fontSize: 14, marginTop: 4 },
-  editLabel: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
-  cardActions: { alignItems: 'flex-end', gap: 10 },
-  deleteLabel: { color: '#b91c1c', fontSize: 14, fontWeight: '600' },
+  exerciseDetails: { flex: 1, minWidth: 0 },
+  exerciseName: {
+    color: '#111827',
+    flexShrink: 1,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  cardActions: { flexDirection: 'row', gap: 4, marginLeft: 8 },
+  iconButton: {
+    alignItems: 'center',
+    borderRadius: 10,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  pressedIconButton: { backgroundColor: '#f3f4f6' },
+  editIcon: { color: '#2563eb', fontSize: 24, lineHeight: 28 },
+  deleteIcon: { color: '#b91c1c', fontSize: 28, lineHeight: 30 },
 });

@@ -214,6 +214,32 @@ export class IndexedDbRepository
     });
   }
 
+  async reorderExercises(
+    workoutId: string,
+    workoutExerciseIds: string[],
+    now: Date,
+  ): Promise<void> {
+    await this.updateSnapshot((data) => {
+      const current = data.workoutExercises.filter(
+        (item) => item.workoutId === workoutId,
+      );
+      const currentIds = new Set(current.map(({ id }) => id));
+      if (
+        current.length !== workoutExerciseIds.length ||
+        new Set(workoutExerciseIds).size !== workoutExerciseIds.length ||
+        workoutExerciseIds.some((id) => !currentIds.has(id))
+      ) {
+        throw new Error('Некорректный порядок упражнений.');
+      }
+
+      const positions = new Map(
+        workoutExerciseIds.map((id, position) => [id, position]),
+      );
+      for (const item of current) item.position = positions.get(item.id)!;
+      touchWorkout(data, workoutId, now);
+    });
+  }
+
   async addSet(
     workoutExerciseId: string,
     draft: ParsedExerciseSet,

@@ -7,7 +7,7 @@ import {
 } from 'react';
 import {
   Animated,
-  type GestureResponderHandlers,
+  type GestureResponderEvent,
   KeyboardAvoidingView,
   type LayoutChangeEvent,
   PanResponder,
@@ -421,6 +421,7 @@ export function WorkoutScreen({
                 : 0;
               return (
                 <DraggableExerciseCard
+                  collapsed={isCollapsed}
                   disabled={isSaving}
                   exerciseName={workoutExercise.exerciseName}
                   isDragging={dragPreview?.id === workoutExercise.id}
@@ -450,27 +451,14 @@ export function WorkoutScreen({
                           };
                     });
                   }}
+                  onToggleCollapsed={() =>
+                    toggleExerciseCollapsed(workoutExercise.id)
+                  }
                   previewOffset={displacedOffset}
                 >
                   <Text style={styles.cardTitle}>
                     {workoutExercise.exerciseName}
                   </Text>
-                  <Pressable
-                    accessibilityLabel={`${isCollapsed ? 'Развернуть' : 'Свернуть'} подходы упражнения «${workoutExercise.exerciseName}»`}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: !isCollapsed }}
-                    disabled={isSaving}
-                    hitSlop={8}
-                    onPress={() => toggleExerciseCollapsed(workoutExercise.id)}
-                    style={({ pressed }) => [
-                      styles.collapseButton,
-                      pressed && styles.pressedIconButton,
-                    ]}
-                  >
-                    <Text style={styles.collapseIcon}>
-                      {isCollapsed ? '⌄' : '⌃'}
-                    </Text>
-                  </Pressable>
                   {!isCollapsed ? (
                     <>
                       {workoutExercise.sets.length === 0 ? (
@@ -606,6 +594,7 @@ export function WorkoutScreen({
 
 function DraggableExerciseCard({
   children,
+  collapsed,
   disabled,
   exerciseName,
   isDragging,
@@ -614,9 +603,11 @@ function DraggableExerciseCard({
   onDragMove,
   onDragStart,
   onLayout,
+  onToggleCollapsed,
   previewOffset,
 }: {
   children: ReactNode;
+  collapsed: boolean;
   disabled: boolean;
   exerciseName: string;
   isDragging: boolean;
@@ -625,15 +616,21 @@ function DraggableExerciseCard({
   onDragMove: (offsetY: number) => void;
   onDragStart: () => void;
   onLayout: (event: LayoutChangeEvent) => void;
+  onToggleCollapsed: () => void;
   previewOffset: number;
 }) {
   const [translateY] = useState(() => new Animated.Value(0));
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragActivated = useRef(false);
+  const dragResponderActive = useRef(false);
+  const touchStartY = useRef(0);
   const dragCallbacks = useRef({
     disabled,
     onDragCancel,
     onDragEnd,
     onDragMove,
     onDragStart,
+    onToggleCollapsed,
   });
   useEffect(() => {
     dragCallbacks.current = {
@@ -642,32 +639,90 @@ function DraggableExerciseCard({
       onDragEnd,
       onDragMove,
       onDragStart,
+      onToggleCollapsed,
     };
-  }, [disabled, onDragCancel, onDragEnd, onDragMove, onDragStart]);
+  }, [
+    disabled,
+    onDragCancel,
+    onDragEnd,
+    onDragMove,
+    onDragStart,
+    onToggleCollapsed,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    },
+    [],
+  );
+
+  function clearLongPressTimer() {
+    if (!longPressTimer.current) return;
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  }
+
+  function handleTouchStart(event: GestureResponderEvent) {
+    if (dragCallbacks.current.disabled) return;
+    touchStartY.current = event.nativeEvent.pageY;
+    dragActivated.current = false;
+    dragResponderActive.current = false;
+    clearLongPressTimer();
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      dragActivated.current = true;
+      dragCallbacks.current.onDragStart();
+    }, 450);
+  }
+
+  function handleTouchMove(event: GestureResponderEvent) {
+    if (
+      !dragActivated.current &&
+      Math.abs(event.nativeEvent.pageY - touchStartY.current) > 8
+    ) {
+      clearLongPressTimer();
+    }
+  }
+
+  function handleTouchEnd() {
+    clearLongPressTimer();
+    if (dragActivated.current && !dragResponderActive.current) {
+      dragActivated.current = false;
+      dragCallbacks.current.onDragCancel();
+    }
+  }
   // Responder callbacks read current props only after a gesture event.
   // eslint-disable-next-line react-hooks/refs
   const [panResponder] = useState(() =>
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !dragCallbacks.current.disabled,
-      onStartShouldSetPanResponderCapture: () =>
-        !dragCallbacks.current.disabled,
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        !dragCallbacks.current.disabled && Math.abs(gesture.dy) > 4,
-      onMoveShouldSetPanResponderCapture: (_, gesture) =>
-        !dragCallbacks.current.disabled && Math.abs(gesture.dy) > 4,
-      onPanResponderGrant: () => dragCallbacks.current.onDragStart(),
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: () => dragActivated.current,
+      onMoveShouldSetPanResponderCapture: () => dragActivated.current,
+      onPanResponderGrant: () => {
+        dragResponderActive.current = true;
+      },
       onPanResponderMove: (_, gesture) => {
         translateY.setValue(gesture.dy);
         dragCallbacks.current.onDragMove(gesture.dy);
       },
       onPanResponderRelease: (_, gesture) => {
+        clearLongPressTimer();
         translateY.setValue(0);
+        dragActivated.current = false;
+        dragResponderActive.current = false;
         dragCallbacks.current.onDragEnd(gesture.dy);
       },
       onPanResponderTerminationRequest: () => false,
       onPanResponderTerminate: () => {
+        clearLongPressTimer();
         translateY.setValue(0);
-        dragCallbacks.current.onDragCancel();
+        if (dragActivated.current) {
+          dragActivated.current = false;
+          dragResponderActive.current = false;
+          dragCallbacks.current.onDragCancel();
+        }
       },
       onShouldBlockNativeResponder: () => true,
     }),
@@ -675,7 +730,12 @@ function DraggableExerciseCard({
 
   return (
     <Animated.View
+      {...panResponder.panHandlers}
       onLayout={onLayout}
+      onTouchCancel={handleTouchEnd}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
+      onTouchStart={handleTouchStart}
       style={[
         styles.card,
         isDragging && styles.draggingCard,
@@ -685,31 +745,64 @@ function DraggableExerciseCard({
       ]}
     >
       {children}
-      <DragHandle
+      <ExerciseCardControl
+        collapsed={collapsed}
+        disabled={disabled}
         exerciseName={exerciseName}
-        panHandlers={panResponder.panHandlers}
+        isDragging={isDragging}
+        onToggleCollapsed={onToggleCollapsed}
       />
     </Animated.View>
   );
 }
 
-function DragHandle({
+function ExerciseCardControl({
+  collapsed,
+  disabled,
   exerciseName,
-  panHandlers,
+  isDragging,
+  onToggleCollapsed,
 }: {
+  collapsed: boolean;
+  disabled: boolean;
   exerciseName: string;
-  panHandlers: GestureResponderHandlers;
+  isDragging: boolean;
+  onToggleCollapsed: () => void;
 }) {
   return (
-    <View
-      {...panHandlers}
-      accessibilityHint="Перетащите вверх или вниз"
-      accessibilityLabel={`Изменить порядок упражнения «${exerciseName}»`}
+    <Pressable
+      accessibilityHint="Нажмите, чтобы свернуть или развернуть. Для изменения порядка удерживайте карточку упражнения."
+      accessibilityLabel={`${collapsed ? 'Развернуть' : 'Свернуть'} подходы упражнения «${exerciseName}»`}
       accessibilityRole="button"
-      style={styles.dragHandle}
+      accessibilityState={{ disabled, expanded: !collapsed }}
+      disabled={disabled}
+      hitSlop={8}
+      onPress={onToggleCollapsed}
+      style={({ pressed }) => [
+        styles.exerciseCardControl,
+        pressed && styles.pressedIconButton,
+        disabled && styles.disabledButton,
+      ]}
     >
-      <Text style={styles.dragHandleText}>≡</Text>
-    </View>
+      {isDragging ? (
+        <View accessibilityElementsHidden style={styles.dragIcon}>
+          <View style={styles.dragIconLine} />
+          <View style={styles.dragIconLine} />
+          <View style={styles.dragIconLine} />
+        </View>
+      ) : (
+        <View
+          accessibilityElementsHidden
+          style={[
+            styles.chevronIcon,
+            collapsed ? styles.chevronDown : styles.chevronUp,
+          ]}
+        >
+          <View style={[styles.chevronLine, styles.chevronLineLeft]} />
+          <View style={[styles.chevronLine, styles.chevronLineRight]} />
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -786,20 +879,9 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 18,
     fontWeight: '700',
-    paddingRight: 88,
+    paddingRight: 44,
   },
-  collapseButton: {
-    alignItems: 'center',
-    height: 44,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 50,
-    top: 6,
-    width: 44,
-    zIndex: 1,
-  },
-  collapseIcon: { color: '#374151', fontSize: 24, lineHeight: 28 },
-  dragHandle: {
+  exerciseCardControl: {
     alignItems: 'center',
     height: 44,
     justifyContent: 'center',
@@ -809,7 +891,23 @@ const styles = StyleSheet.create({
     width: 44,
     zIndex: 1,
   },
-  dragHandleText: { color: '#6b7280', fontSize: 28, lineHeight: 30 },
+  chevronIcon: {
+    height: 14,
+    width: 16,
+  },
+  chevronUp: { transform: [{ rotate: '180deg' }] },
+  chevronDown: {},
+  chevronLine: {
+    backgroundColor: '#9ca3af',
+    height: 1.5,
+    position: 'absolute',
+    top: 6,
+    width: 9,
+  },
+  chevronLineLeft: { left: 0.5, transform: [{ rotate: '45deg' }] },
+  chevronLineRight: { right: 0.5, transform: [{ rotate: '-45deg' }] },
+  dragIcon: { gap: 3, width: 16 },
+  dragIconLine: { backgroundColor: '#9ca3af', height: 1.5, width: 16 },
   empty: { color: '#6b7280', fontSize: 15, marginTop: 12 },
   setRow: { alignItems: 'center', flexDirection: 'row', marginTop: 12 },
   setSummary: { flex: 1 },

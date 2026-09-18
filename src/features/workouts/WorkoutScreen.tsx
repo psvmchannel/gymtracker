@@ -63,6 +63,9 @@ export function WorkoutScreen({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
+  const [collapsedExerciseIds, setCollapsedExerciseIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [exerciseLayouts, setExerciseLayouts] = useState<
     Record<string, ExerciseLayout>
   >({});
@@ -245,6 +248,15 @@ export function WorkoutScreen({
     }
   }
 
+  function toggleExerciseCollapsed(workoutExerciseId: string) {
+    setCollapsedExerciseIds((current) => {
+      const next = new Set(current);
+      if (next.has(workoutExerciseId)) next.delete(workoutExerciseId);
+      else next.add(workoutExerciseId);
+      return next;
+    });
+  }
+
   async function saveSet(workoutExerciseId: string) {
     const draft = setDrafts[workoutExerciseId] ?? EMPTY_SET;
     const validation = validateExerciseSet(draft);
@@ -384,6 +396,7 @@ export function WorkoutScreen({
 
             {selected.exercises.map((workoutExercise) => {
               const draft = setDrafts[workoutExercise.id] ?? EMPTY_SET;
+              const isCollapsed = collapsedExerciseIds.has(workoutExercise.id);
               const sourceIndex = dragPreview
                 ? selected.exercises.findIndex(
                     ({ id }) => id === dragPreview.id,
@@ -442,91 +455,112 @@ export function WorkoutScreen({
                   <Text style={styles.cardTitle}>
                     {workoutExercise.exerciseName}
                   </Text>
-                  {workoutExercise.sets.length === 0 ? (
-                    <Text style={styles.empty}>Подходов пока нет.</Text>
-                  ) : (
-                    workoutExercise.sets.map((set, index) => (
-                      <View key={set.id} style={styles.setRow}>
-                        <Pressable
-                          disabled={isSaving}
-                          onPress={() => {
-                            setEditingSet({
-                              id: set.id,
-                              workoutExerciseId: workoutExercise.id,
-                            });
+                  <Pressable
+                    accessibilityLabel={`${isCollapsed ? 'Развернуть' : 'Свернуть'} подходы упражнения «${workoutExercise.exerciseName}»`}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !isCollapsed }}
+                    disabled={isSaving}
+                    hitSlop={8}
+                    onPress={() => toggleExerciseCollapsed(workoutExercise.id)}
+                    style={({ pressed }) => [
+                      styles.collapseButton,
+                      pressed && styles.pressedIconButton,
+                    ]}
+                  >
+                    <Text style={styles.collapseIcon}>
+                      {isCollapsed ? '⌄' : '⌃'}
+                    </Text>
+                  </Pressable>
+                  {!isCollapsed ? (
+                    <>
+                      {workoutExercise.sets.length === 0 ? (
+                        <Text style={styles.empty}>Подходов пока нет.</Text>
+                      ) : (
+                        workoutExercise.sets.map((set, index) => (
+                          <View key={set.id} style={styles.setRow}>
+                            <Pressable
+                              disabled={isSaving}
+                              onPress={() => {
+                                setEditingSet({
+                                  id: set.id,
+                                  workoutExerciseId: workoutExercise.id,
+                                });
+                                setSetDrafts((values) => ({
+                                  ...values,
+                                  [workoutExercise.id]: {
+                                    weight: String(set.weight),
+                                    repetitions: String(set.repetitions),
+                                  },
+                                }));
+                              }}
+                              style={styles.setSummary}
+                            >
+                              <Text style={styles.setText}>
+                                {index + 1}. {set.weight} кг × {set.repetitions}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              accessibilityLabel={`Удалить подход ${index + 1} упражнения «${workoutExercise.exerciseName}»`}
+                              accessibilityRole="button"
+                              disabled={isSaving}
+                              hitSlop={8}
+                              onPress={() => confirmDeleteSet(set.id)}
+                              style={({ pressed }) => [
+                                styles.deleteSetButton,
+                                pressed && styles.pressedIconButton,
+                              ]}
+                            >
+                              <Text style={styles.deleteSetIcon}>×</Text>
+                            </Pressable>
+                          </View>
+                        ))
+                      )}
+
+                      <View style={styles.setForm}>
+                        <TextInput
+                          accessibilityLabel={`Вес для ${workoutExercise.exerciseName}`}
+                          keyboardType="decimal-pad"
+                          onChangeText={(weight) =>
                             setSetDrafts((values) => ({
                               ...values,
-                              [workoutExercise.id]: {
-                                weight: String(set.weight),
-                                repetitions: String(set.repetitions),
-                              },
-                            }));
-                          }}
-                          style={styles.setSummary}
-                        >
-                          <Text style={styles.setText}>
-                            {index + 1}. {set.weight} кг × {set.repetitions}
-                          </Text>
-                        </Pressable>
+                              [workoutExercise.id]: { ...draft, weight },
+                            }))
+                          }
+                          placeholder="Вес, кг"
+                          style={[styles.input, styles.setInput]}
+                          value={draft.weight}
+                        />
+                        <TextInput
+                          accessibilityLabel={`Повторения для ${workoutExercise.exerciseName}`}
+                          keyboardType="number-pad"
+                          onChangeText={(repetitions) =>
+                            setSetDrafts((values) => ({
+                              ...values,
+                              [workoutExercise.id]: { ...draft, repetitions },
+                            }))
+                          }
+                          placeholder="Повторы"
+                          style={[styles.input, styles.setInput]}
+                          value={draft.repetitions}
+                        />
                         <Pressable
-                          accessibilityLabel={`Удалить подход ${index + 1} упражнения «${workoutExercise.exerciseName}»`}
-                          accessibilityRole="button"
                           disabled={isSaving}
-                          hitSlop={8}
-                          onPress={() => confirmDeleteSet(set.id)}
-                          style={({ pressed }) => [
-                            styles.deleteSetButton,
-                            pressed && styles.pressedIconButton,
+                          onPress={() => void saveSet(workoutExercise.id)}
+                          style={[
+                            styles.smallButton,
+                            isSaving && styles.disabledButton,
                           ]}
                         >
-                          <Text style={styles.deleteSetIcon}>×</Text>
+                          <Text style={styles.primaryButtonText}>
+                            {editingSet?.workoutExerciseId ===
+                            workoutExercise.id
+                              ? 'Сохранить'
+                              : 'Добавить'}
+                          </Text>
                         </Pressable>
                       </View>
-                    ))
-                  )}
-
-                  <View style={styles.setForm}>
-                    <TextInput
-                      accessibilityLabel={`Вес для ${workoutExercise.exerciseName}`}
-                      keyboardType="decimal-pad"
-                      onChangeText={(weight) =>
-                        setSetDrafts((values) => ({
-                          ...values,
-                          [workoutExercise.id]: { ...draft, weight },
-                        }))
-                      }
-                      placeholder="Вес, кг"
-                      style={[styles.input, styles.setInput]}
-                      value={draft.weight}
-                    />
-                    <TextInput
-                      accessibilityLabel={`Повторения для ${workoutExercise.exerciseName}`}
-                      keyboardType="number-pad"
-                      onChangeText={(repetitions) =>
-                        setSetDrafts((values) => ({
-                          ...values,
-                          [workoutExercise.id]: { ...draft, repetitions },
-                        }))
-                      }
-                      placeholder="Повторы"
-                      style={[styles.input, styles.setInput]}
-                      value={draft.repetitions}
-                    />
-                    <Pressable
-                      disabled={isSaving}
-                      onPress={() => void saveSet(workoutExercise.id)}
-                      style={[
-                        styles.smallButton,
-                        isSaving && styles.disabledButton,
-                      ]}
-                    >
-                      <Text style={styles.primaryButtonText}>
-                        {editingSet?.workoutExerciseId === workoutExercise.id
-                          ? 'Сохранить'
-                          : 'Добавить'}
-                      </Text>
-                    </Pressable>
-                  </View>
+                    </>
+                  ) : null}
                 </DraggableExerciseCard>
               );
             })}
@@ -752,8 +786,19 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 18,
     fontWeight: '700',
-    paddingRight: 44,
+    paddingRight: 88,
   },
+  collapseButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 50,
+    top: 6,
+    width: 44,
+    zIndex: 1,
+  },
+  collapseIcon: { color: '#374151', fontSize: 24, lineHeight: 28 },
   dragHandle: {
     alignItems: 'center',
     height: 44,

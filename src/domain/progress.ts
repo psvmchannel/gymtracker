@@ -1,12 +1,21 @@
 export type ProgressPoint = {
   date: string;
   maxWeight: number;
+  totalVolume: number;
 };
 
 export type ChartPoint = ProgressPoint & { x: number; y: number };
+export type ProgressMetric = 'maxWeight' | 'totalVolume';
+
+export function calculateWorkoutVolume(
+  sets: { weight: number; repetitions: number }[],
+): number {
+  return sets.reduce((total, set) => total + set.weight * set.repetitions, 0);
+}
 
 export function layoutProgressPoints(
   points: ProgressPoint[],
+  metric: ProgressMetric,
   width: number,
   height: number,
   padding = 20,
@@ -14,10 +23,10 @@ export function layoutProgressPoints(
   if (points.length === 0) return [];
   const usableWidth = Math.max(0, width - padding * 2);
   const usableHeight = Math.max(0, height - padding * 2);
-  const weights = points.map(({ maxWeight }) => maxWeight);
-  const minWeight = Math.min(...weights);
-  const maxWeight = Math.max(...weights);
-  const weightRange = maxWeight - minWeight;
+  const values = points.map((point) => point[metric]);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const valueRange = maxValue - minValue;
 
   return points.map((point, index) => ({
     ...point,
@@ -26,9 +35,8 @@ export function layoutProgressPoints(
         ? width / 2
         : padding + (index / (points.length - 1)) * usableWidth,
     y:
-      weightRange === 0
+      valueRange === 0
         ? height / 2
-        : padding +
-          ((maxWeight - point.maxWeight) / weightRange) * usableHeight,
+        : padding + ((maxValue - point[metric]) / valueRange) * usableHeight,
   }));
 }

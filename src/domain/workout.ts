@@ -44,6 +44,13 @@ export function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export function findWorkoutByLocalDate(
+  workouts: Workout[],
+  localDate: string,
+): Workout | null {
+  return workouts.find((workout) => workout.date === localDate) ?? null;
+}
+
 export function validateWorkoutDate(date: string): ValidationResult<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { ok: false, message: 'Введите дату в формате ГГГГ-ММ-ДД.' };

@@ -216,7 +216,17 @@ export function ExerciseCatalog({ repository }: Props) {
                 {MUSCLE_GROUP_LABELS[group.muscleGroup]}
               </Text>
               {group.exercises.map((exercise) => (
-                <View key={exercise.id} style={styles.exerciseCard}>
+                <View
+                  accessibilityState={{ selected: editingId === exercise.id }}
+                  key={exercise.id}
+                  style={styles.exerciseCard}
+                >
+                  {editingId === exercise.id ? (
+                    <View
+                      accessibilityElementsHidden
+                      style={styles.editingIndicator}
+                    />
+                  ) : null}
                   <View style={styles.exerciseDetails}>
                     <Text
                       ellipsizeMode="tail"
@@ -384,6 +394,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    position: 'relative',
+  },
+  editingIndicator: {
+    backgroundColor: '#d1d5db',
+    borderRadius: 999,
+    bottom: 10,
+    left: 5,
+    position: 'absolute',
+    top: 10,
+    width: 2,
   },
   exerciseDetails: { flex: 1, minWidth: 0 },
   exerciseName: {
@@ -401,6 +421,16 @@ const styles = StyleSheet.create({
     width: 44,
   },
   pressedIconButton: { backgroundColor: '#f3f4f6' },
-  editIcon: { color: '#2563eb', fontSize: 24, lineHeight: 28 },
-  deleteIcon: { color: '#b91c1c', fontSize: 28, lineHeight: 30 },
+  editIcon: {
+    color: '#2563eb',
+    fontSize: 24,
+    lineHeight: 28,
+    transform: [{ translateX: 4 }],
+  },
+  deleteIcon: {
+    color: '#b91c1c',
+    fontSize: 28,
+    lineHeight: 30,
+    transform: [{ translateX: 3 }],
+  },
 });

@@ -11,6 +11,7 @@ import {
 import type { Exercise } from '../../domain/exercise';
 import {
   layoutProgressPoints,
+  type ProgressMetric,
   type ProgressPoint,
 } from '../../domain/progress';
 import type { ExerciseRepository } from '../../repositories/exerciseRepository';
@@ -26,6 +27,10 @@ type Props = {
 };
 
 const CHART_HEIGHT = 220;
+const METRICS: { id: ProgressMetric; label: string; title: string }[] = [
+  { id: 'maxWeight', label: 'Макс. вес', title: 'Максимальный вес, кг' },
+  { id: 'totalVolume', label: 'Объём', title: 'Объём нагрузки, кг' },
+];
 
 export function StatisticsScreen({
   exerciseRepository,
@@ -36,7 +41,9 @@ export function StatisticsScreen({
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressPoint[]>([]);
+  const [metric, setMetric] = useState<ProgressMetric>('maxWeight');
   const [chartWidth, setChartWidth] = useState(0);
+  const [resultHeight, setResultHeight] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,12 +92,14 @@ export function StatisticsScreen({
   }, [selectedId, workoutRepository]);
 
   const chartPoints = useMemo(
-    () => layoutProgressPoints(progress, chartWidth, CHART_HEIGHT, 26),
-    [chartWidth, progress],
+    () => layoutProgressPoints(progress, metric, chartWidth, CHART_HEIGHT, 26),
+    [chartWidth, metric, progress],
   );
   const selected = exercises.find(({ id }) => id === selectedId);
+  const metricDetails = METRICS.find(({ id }) => id === metric)!;
 
   function selectExercise(id: string) {
+    if (id === selectedId) return;
     setIsLoading(true);
     setSelectedId(id);
   }
@@ -133,64 +142,104 @@ export function StatisticsScreen({
         </ScrollView>
       )}
 
-      {error ? (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {error}
-        </Text>
-      ) : isLoading ? (
-        <ActivityIndicator color="#111827" style={styles.loader} />
-      ) : selected && progress.length === 0 ? (
-        <Text style={styles.empty}>
-          Для этого упражнения пока нет подходов.
-        </Text>
-      ) : selected ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Максимальный вес, кг</Text>
-          <View
-            accessibilityLabel={`График прогресса: ${progress.map((point) => `${point.date} — ${point.maxWeight} кг`).join(', ')}`}
-            accessibilityRole="image"
-            onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
-            style={styles.chart}
-          >
-            {chartPoints.slice(1).map((point, index) => {
-              const previous = chartPoints[index];
-              if (!previous) return null;
-              const dx = point.x - previous.x;
-              const dy = point.y - previous.y;
-              const length = Math.sqrt(dx * dx + dy * dy);
-              const angle = `${Math.atan2(dy, dx)}rad`;
-              return (
-                <View
-                  key={`${previous.date}-${point.date}`}
+      {selected ? (
+        <>
+          <Text style={styles.metricLabel}>Метрика</Text>
+          <View accessibilityRole="radiogroup" style={styles.metricSwitch}>
+            {METRICS.map((item) => (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: item.id === metric }}
+                key={item.id}
+                onPress={() => setMetric(item.id)}
+                style={[
+                  styles.metricButton,
+                  item.id === metric && styles.selectedMetricButton,
+                ]}
+              >
+                <Text
                   style={[
-                    styles.line,
-                    {
-                      left: (previous.x + point.x - length) / 2,
-                      top: (previous.y + point.y) / 2,
-                      transform: [{ rotate: angle }],
-                      width: length,
-                    },
+                    styles.metricButtonText,
+                    item.id === metric && styles.selectedMetricButtonText,
                   ]}
-                />
-              );
-            })}
-            {chartPoints.map((point) => (
-              <View
-                key={point.date}
-                style={[styles.dot, { left: point.x - 5, top: point.y - 5 }]}
-              />
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
             ))}
           </View>
-          <View style={styles.values}>
-            {progress.map((point) => (
-              <View key={point.date} style={styles.valueRow}>
-                <Text style={styles.date}>{point.date}</Text>
-                <Text style={styles.weight}>{point.maxWeight} кг</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+        </>
       ) : null}
+
+      <View
+        onLayout={(event) => {
+          if (!isLoading) setResultHeight(event.nativeEvent.layout.height);
+        }}
+        style={
+          isLoading && resultHeight > 0 ? { height: resultHeight } : undefined
+        }
+      >
+        {error ? (
+          <Text accessibilityRole="alert" style={styles.error}>
+            {error}
+          </Text>
+        ) : isLoading ? (
+          <ActivityIndicator color="#111827" style={styles.loader} />
+        ) : selected && progress.length === 0 ? (
+          <Text style={styles.empty}>
+            Для этого упражнения пока нет подходов.
+          </Text>
+        ) : selected ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{metricDetails.title}</Text>
+            <View
+              accessibilityLabel={`График прогресса, ${metricDetails.title.toLowerCase()}: ${progress.map((point) => `${point.date} — ${point[metric]} кг`).join(', ')}`}
+              accessibilityRole="image"
+              onLayout={(event) =>
+                setChartWidth(event.nativeEvent.layout.width)
+              }
+              style={styles.chart}
+            >
+              {chartPoints.slice(1).map((point, index) => {
+                const previous = chartPoints[index];
+                if (!previous) return null;
+                const dx = point.x - previous.x;
+                const dy = point.y - previous.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const angle = `${Math.atan2(dy, dx)}rad`;
+                return (
+                  <View
+                    key={`${previous.date}-${point.date}`}
+                    style={[
+                      styles.line,
+                      {
+                        left: (previous.x + point.x - length) / 2,
+                        top: (previous.y + point.y) / 2,
+                        transform: [{ rotate: angle }],
+                        width: length,
+                      },
+                    ]}
+                  />
+                );
+              })}
+              {chartPoints.map((point) => (
+                <View
+                  key={point.date}
+                  style={[styles.dot, { left: point.x - 5, top: point.y - 5 }]}
+                />
+              ))}
+            </View>
+            <View style={styles.values}>
+              {progress.map((point) => (
+                <View key={point.date} style={styles.valueRow}>
+                  <Text style={styles.date}>{point.date}</Text>
+                  <Text style={styles.value}>{point[metric]} кг</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </View>
       <DataTransferPanel
         repository={dataTransferRepository}
         onImported={onImported}
@@ -219,6 +268,28 @@ const styles = StyleSheet.create({
   selectedExerciseButton: { backgroundColor: '#111827' },
   exerciseText: { color: '#374151', fontWeight: '600' },
   selectedExerciseText: { color: '#ffffff' },
+  metricLabel: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  metricSwitch: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e5e7eb',
+    borderRadius: 10,
+    flexDirection: 'row',
+    marginTop: 8,
+    padding: 3,
+  },
+  metricButton: {
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  selectedMetricButton: { backgroundColor: '#ffffff' },
+  metricButtonText: { color: '#6b7280', fontSize: 14, fontWeight: '600' },
+  selectedMetricButtonText: { color: '#111827' },
   loader: { marginTop: 36 },
   error: { color: '#b91c1c', fontSize: 15, marginTop: 20 },
   empty: { color: '#6b7280', fontSize: 16, lineHeight: 23, marginTop: 24 },
@@ -259,5 +330,5 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   date: { color: '#6b7280', fontSize: 14 },
-  weight: { color: '#111827', fontSize: 14, fontWeight: '700' },
+  value: { color: '#111827', fontSize: 14, fontWeight: '700' },
 });

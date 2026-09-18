@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  findWorkoutByLocalDate,
   formatLocalDate,
   validateExerciseSet,
   validateWorkoutDate,
@@ -9,6 +10,26 @@ import {
 describe('тренировка', () => {
   it('форматирует явно переданную локальную дату без преобразования в UTC', () => {
     expect(formatLocalDate(new Date(2026, 0, 9, 23, 30))).toBe('2026-01-09');
+  });
+
+  it('находит тренировку только за явно переданную локальную дату', () => {
+    const workouts = [
+      {
+        id: 'future',
+        date: '2026-09-19',
+        createdAt: '2026-09-19T08:00:00.000Z',
+        updatedAt: '2026-09-19T08:00:00.000Z',
+      },
+      {
+        id: 'today',
+        date: '2026-09-18',
+        createdAt: '2026-09-18T08:00:00.000Z',
+        updatedAt: '2026-09-18T08:00:00.000Z',
+      },
+    ];
+
+    expect(findWorkoutByLocalDate(workouts, '2026-09-18')?.id).toBe('today');
+    expect(findWorkoutByLocalDate(workouts, '2026-09-17')).toBeNull();
   });
 
   it('отклоняет невозможную календарную дату', () => {

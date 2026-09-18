@@ -44,7 +44,7 @@ describe('IndexedDbRepository', () => {
     ]);
 
     expect(await repository.getProgress(exercise.id)).toEqual([
-      { date: '2026-09-12', maxWeight: 82.5 },
+      { date: '2026-09-12', maxWeight: 82.5, totalVolume: 495 },
     ]);
     const snapshot = await repository.exportSnapshot(now);
     await expect(repository.importSnapshot(snapshot)).rejects.toBeInstanceOf(
@@ -66,5 +66,31 @@ describe('IndexedDbRepository', () => {
         },
       ],
     });
+
+    const otherWorkout = await repository.create('2026-09-13', now);
+    await repository.addExercise(otherWorkout.id, secondExercise.id, now);
+    const restored = await repository.get(workout.id);
+    const exerciseToRemove = restored?.exercises.find(
+      ({ exerciseId }) => exerciseId === secondExercise.id,
+    );
+    expect(exerciseToRemove).toBeDefined();
+
+    await repository.removeExercise(exerciseToRemove!.id, now);
+
+    expect(await repository.get(workout.id)).toMatchObject({
+      exercises: [
+        {
+          exerciseName: 'Жим лёжа',
+          position: 0,
+          sets: [{ weight: 82.5, repetitions: 6 }],
+        },
+      ],
+    });
+    expect(await repository.get(otherWorkout.id)).toMatchObject({
+      exercises: [{ exerciseName: 'Тяга блока', position: 0 }],
+    });
+    expect((await repository.listActive()).map(({ id }) => id)).toContain(
+      secondExercise.id,
+    );
   });
 });

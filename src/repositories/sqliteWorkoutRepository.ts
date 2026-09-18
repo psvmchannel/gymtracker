@@ -179,8 +179,11 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
     const rows = await this.db.getAllAsync<{
       date: string;
       max_weight: number;
+      total_volume: number;
     }>(
-      `SELECT w.date, MAX(es.weight) AS max_weight
+      `SELECT w.date,
+              MAX(es.weight) AS max_weight,
+              SUM(es.weight * es.repetitions) AS total_volume
        FROM workouts w
        JOIN workout_exercises we ON we.workout_id = w.id
        JOIN exercise_sets es ON es.workout_exercise_id = we.id
@@ -189,7 +192,11 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
        ORDER BY w.date`,
       exerciseId,
     );
-    return rows.map((row) => ({ date: row.date, maxWeight: row.max_weight }));
+    return rows.map((row) => ({
+      date: row.date,
+      maxWeight: row.max_weight,
+      totalVolume: row.total_volume,
+    }));
   }
 
   async addExercise(
@@ -216,6 +223,34 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
       workoutId,
     );
     await this.touchWorkout(workoutId, now);
+  }
+
+  async removeExercise(workoutExerciseId: string, now: Date): Promise<void> {
+    const relation = await this.db.getFirstAsync<{ workout_id: string }>(
+      'SELECT workout_id FROM workout_exercises WHERE id = ?',
+      workoutExerciseId,
+    );
+    if (!relation) return;
+
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync(
+        'DELETE FROM workout_exercises WHERE id = ?',
+        workoutExerciseId,
+      );
+      const remaining = await this.db.getAllAsync<{ id: string }>(
+        `SELECT id FROM workout_exercises
+         WHERE workout_id = ? ORDER BY position`,
+        relation.workout_id,
+      );
+      for (const [position, exercise] of remaining.entries()) {
+        await this.db.runAsync(
+          'UPDATE workout_exercises SET position = ? WHERE id = ?',
+          position,
+          exercise.id,
+        );
+      }
+      await this.touchWorkout(relation.workout_id, now);
+    });
   }
 
   async reorderExercises(

@@ -27,6 +27,7 @@ export interface WorkoutRepository {
   delete(id: string): Promise<void>;
   getProgress(exerciseId: string): Promise<ProgressPoint[]>;
   addExercise(workoutId: string, exerciseId: string, now: Date): Promise<void>;
+  removeExercise(workoutExerciseId: string, now: Date): Promise<void>;
   reorderExercises(
     workoutId: string,
     workoutExerciseIds: string[],

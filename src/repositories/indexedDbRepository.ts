@@ -4,7 +4,7 @@ import {
   type Exercise,
   type ExerciseDraft,
 } from '../domain/exercise';
-import type { ProgressPoint } from '../domain/progress';
+import { calculateWorkoutVolume, type ProgressPoint } from '../domain/progress';
 import type {
   ParsedExerciseSet,
   Workout,
@@ -214,6 +214,29 @@ export class IndexedDbRepository
     });
   }
 
+  async removeExercise(workoutExerciseId: string, now: Date): Promise<void> {
+    await this.updateSnapshot((data) => {
+      const relation = data.workoutExercises.find(
+        (item) => item.id === workoutExerciseId,
+      );
+      if (!relation) return;
+
+      data.exerciseSets = data.exerciseSets.filter(
+        (item) => item.workoutExerciseId !== workoutExerciseId,
+      );
+      data.workoutExercises = data.workoutExercises.filter(
+        (item) => item.id !== workoutExerciseId,
+      );
+      data.workoutExercises
+        .filter((item) => item.workoutId === relation.workoutId)
+        .sort((a, b) => a.position - b.position)
+        .forEach((item, position) => {
+          item.position = position;
+        });
+      touchWorkout(data, relation.workoutId, now);
+    });
+  }
+
   async reorderExercises(
     workoutId: string,
     workoutExerciseIds: string[],
@@ -301,11 +324,17 @@ export class IndexedDbRepository
             )
             .map((item) => item.id),
         );
-        const weights = data.exerciseSets
-          .filter((item) => relationIds.has(item.workoutExerciseId))
-          .map((item) => item.weight);
-        return weights.length
-          ? [{ date: workout.date, maxWeight: Math.max(...weights) }]
+        const sets = data.exerciseSets.filter((item) =>
+          relationIds.has(item.workoutExerciseId),
+        );
+        return sets.length
+          ? [
+              {
+                date: workout.date,
+                maxWeight: Math.max(...sets.map(({ weight }) => weight)),
+                totalVolume: calculateWorkoutVolume(sets),
+              },
+            ]
           : [];
       });
   }

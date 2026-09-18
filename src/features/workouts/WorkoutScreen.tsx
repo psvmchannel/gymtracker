@@ -22,6 +22,7 @@ import {
 
 import { MUSCLE_GROUP_LABELS, type Exercise } from '../../domain/exercise';
 import {
+  findWorkoutByLocalDate,
   formatLocalDate,
   validateExerciseSet,
   validateWorkoutDate,
@@ -52,7 +53,8 @@ export function WorkoutScreen({
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [activeExercises, setActiveExercises] = useState<Exercise[]>([]);
   const [selected, setSelected] = useState<WorkoutDetails | null>(null);
-  const [date, setDate] = useState(() => formatLocalDate(now()));
+  const [initialLocalDate] = useState(() => formatLocalDate(now()));
+  const [date, setDate] = useState(initialLocalDate);
   const [setDrafts, setSetDrafts] = useState<Record<string, ExerciseSetDraft>>(
     {},
   );
@@ -69,6 +71,15 @@ export function WorkoutScreen({
   const [exerciseLayouts, setExerciseLayouts] = useState<
     Record<string, ExerciseLayout>
   >({});
+  const weightInputRefs = useRef<Record<string, TextInput | null>>({});
+
+  useEffect(() => {
+    if (!editingSet) return;
+    const frame = requestAnimationFrame(() => {
+      weightInputRefs.current[editingSet.workoutExerciseId]?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingSet]);
 
   const refresh = useCallback(
     async (selectedId?: string | null) => {
@@ -87,20 +98,34 @@ export function WorkoutScreen({
 
   useEffect(() => {
     let isCurrent = true;
-    Promise.all([workoutRepository.list(), exerciseRepository.listActive()])
-      .then(([nextWorkouts, nextExercises]) => {
-        if (isCurrent) {
-          setWorkouts(nextWorkouts);
-          setActiveExercises(nextExercises);
-        }
-      })
-      .catch(() => {
+
+    void (async () => {
+      try {
+        const [nextWorkouts, nextExercises] = await Promise.all([
+          workoutRepository.list(),
+          exerciseRepository.listActive(),
+        ]);
+        const todaysWorkout = findWorkoutByLocalDate(
+          nextWorkouts,
+          initialLocalDate,
+        );
+        const todaysDetails = todaysWorkout
+          ? await workoutRepository.get(todaysWorkout.id)
+          : null;
+
+        if (!isCurrent) return;
+        setWorkouts(nextWorkouts);
+        setActiveExercises(nextExercises);
+        setSelected(todaysDetails);
+      } catch {
         if (isCurrent) setError('Не удалось загрузить тренировки.');
-      });
+      }
+    })();
+
     return () => {
       isCurrent = false;
     };
-  }, [exerciseRepository, workoutRepository]);
+  }, [exerciseRepository, initialLocalDate, workoutRepository]);
 
   async function runMutation(action: () => Promise<void>) {
     setIsSaving(true);
@@ -175,6 +200,36 @@ export function WorkoutScreen({
     await runMutation(async () => {
       await workoutRepository.addExercise(selected.id, exerciseId, now());
       await refresh(selected.id);
+    });
+  }
+
+  function confirmRemoveExercise(
+    workoutExerciseId: string,
+    exerciseName: string,
+  ) {
+    if (!selected) return;
+    confirmAction({
+      title: 'Удалить упражнение из тренировки?',
+      message: `Упражнение «${exerciseName}» и его подходы будут удалены только из этой тренировки.`,
+      confirmLabel: 'Удалить',
+      onConfirm: () =>
+        void runMutation(async () => {
+          await workoutRepository.removeExercise(workoutExerciseId, now());
+          setEditingSet((current) =>
+            current?.workoutExerciseId === workoutExerciseId ? null : current,
+          );
+          setSetDrafts((current) => {
+            const next = { ...current };
+            delete next[workoutExerciseId];
+            return next;
+          });
+          setCollapsedExerciseIds((current) => {
+            const next = new Set(current);
+            next.delete(workoutExerciseId);
+            return next;
+          });
+          await refresh(selected.id);
+        }),
     });
   }
 
@@ -466,7 +521,16 @@ export function WorkoutScreen({
                       ) : (
                         workoutExercise.sets.map((set, index) => (
                           <View key={set.id} style={styles.setRow}>
+                            {editingSet?.id === set.id ? (
+                              <View
+                                accessibilityElementsHidden
+                                style={styles.editingIndicator}
+                              />
+                            ) : null}
                             <Pressable
+                              accessibilityState={{
+                                selected: editingSet?.id === set.id,
+                              }}
                               disabled={isSaving}
                               onPress={() => {
                                 setEditingSet({
@@ -483,9 +547,14 @@ export function WorkoutScreen({
                               }}
                               style={styles.setSummary}
                             >
-                              <Text style={styles.setText}>
-                                {index + 1}. {set.weight} кг × {set.repetitions}
-                              </Text>
+                              <View style={styles.setSummaryContent}>
+                                <Text style={styles.setNumber}>
+                                  {index + 1}
+                                </Text>
+                                <Text style={styles.setText}>
+                                  {set.weight} кг × {set.repetitions}
+                                </Text>
+                              </View>
                             </Pressable>
                             <Pressable
                               accessibilityLabel={`Удалить подход ${index + 1} упражнения «${workoutExercise.exerciseName}»`}
@@ -515,6 +584,10 @@ export function WorkoutScreen({
                             }))
                           }
                           placeholder="Вес, кг"
+                          placeholderTextColor="#6b7280"
+                          ref={(input) => {
+                            weightInputRefs.current[workoutExercise.id] = input;
+                          }}
                           style={[styles.input, styles.setInput]}
                           value={draft.weight}
                         />
@@ -528,6 +601,7 @@ export function WorkoutScreen({
                             }))
                           }
                           placeholder="Повторы"
+                          placeholderTextColor="#6b7280"
                           style={[styles.input, styles.setInput]}
                           value={draft.repetitions}
                         />
@@ -547,6 +621,20 @@ export function WorkoutScreen({
                           </Text>
                         </Pressable>
                       </View>
+                      <Pressable
+                        disabled={isSaving}
+                        onPress={() =>
+                          confirmRemoveExercise(
+                            workoutExercise.id,
+                            workoutExercise.exerciseName,
+                          )
+                        }
+                        style={styles.removeExerciseButton}
+                      >
+                        <Text style={styles.removeExerciseText}>
+                          Удалить из тренировки
+                        </Text>
+                      </Pressable>
                     </>
                   ) : null}
                 </DraggableExerciseCard>
@@ -909,9 +997,30 @@ const styles = StyleSheet.create({
   dragIcon: { gap: 3, width: 16 },
   dragIconLine: { backgroundColor: '#9ca3af', height: 1.5, width: 16 },
   empty: { color: '#6b7280', fontSize: 15, marginTop: 12 },
-  setRow: { alignItems: 'center', flexDirection: 'row', marginTop: 12 },
+  setRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 12,
+    position: 'relative',
+  },
+  editingIndicator: {
+    backgroundColor: '#d1d5db',
+    borderRadius: 999,
+    bottom: 8,
+    left: -8,
+    position: 'absolute',
+    top: 8,
+    width: 2,
+  },
   setSummary: { flex: 1 },
+  setSummaryContent: { alignItems: 'baseline', flexDirection: 'row' },
   setText: { color: '#111827', fontSize: 16 },
+  setNumber: {
+    color: '#6b7280',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+    width: 22,
+  },
   deleteText: { color: '#b91c1c', fontSize: 13, fontWeight: '600' },
   deleteSetButton: {
     alignItems: 'center',
@@ -924,6 +1033,8 @@ const styles = StyleSheet.create({
   deleteSetIcon: { color: '#b91c1c', fontSize: 28, lineHeight: 30 },
   setForm: { flexDirection: 'row', gap: 8, marginTop: 14 },
   setInput: { flex: 1, minWidth: 0 },
+  removeExerciseButton: { alignSelf: 'flex-start', marginTop: 14 },
+  removeExerciseText: { color: '#b91c1c', fontSize: 13, fontWeight: '600' },
   exerciseButton: {
     alignItems: 'center',
     backgroundColor: '#ffffff',

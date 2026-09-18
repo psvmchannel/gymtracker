@@ -8,19 +8,23 @@ describe('SQLiteWorkoutRepository', () => {
   it('возвращает максимальный вес упражнения по датам', async () => {
     const db = {
       getAllAsync: jest.fn(async () => [
-        { date: '2026-09-01', max_weight: 80 },
-        { date: '2026-09-08', max_weight: 82.5 },
+        { date: '2026-09-01', max_weight: 80, total_volume: 2400 },
+        { date: '2026-09-08', max_weight: 82.5, total_volume: 2475 },
       ]),
     } as unknown as SQLiteDatabase;
 
     await expect(
       new SQLiteWorkoutRepository(db).getProgress('exercise-1'),
     ).resolves.toEqual([
-      { date: '2026-09-01', maxWeight: 80 },
-      { date: '2026-09-08', maxWeight: 82.5 },
+      { date: '2026-09-01', maxWeight: 80, totalVolume: 2400 },
+      { date: '2026-09-08', maxWeight: 82.5, totalVolume: 2475 },
     ]);
     expect(db.getAllAsync).toHaveBeenCalledWith(
       expect.stringContaining('MAX(es.weight)'),
+      'exercise-1',
+    );
+    expect(db.getAllAsync).toHaveBeenCalledWith(
+      expect.stringContaining('SUM(es.weight * es.repetitions)'),
       'exercise-1',
     );
   });
@@ -149,6 +153,39 @@ describe('SQLiteWorkoutRepository', () => {
       ),
     ).rejects.toThrow('Некорректный порядок упражнений.');
     expect(db.runAsync).not.toHaveBeenCalled();
+  });
+
+  it('атомарно удаляет упражнение из тренировки и обновляет позиции', async () => {
+    const db = {
+      getFirstAsync: jest.fn(async () => ({ workout_id: 'workout-1' })),
+      getAllAsync: jest.fn(async () => [
+        { id: 'remaining-first' },
+        { id: 'remaining-second' },
+      ]),
+      runAsync: jest.fn(async () => ({ changes: 1 })),
+      withTransactionAsync: jest.fn(async (action: () => Promise<void>) =>
+        action(),
+      ),
+    } as unknown as SQLiteDatabase;
+    const now = new Date('2026-09-18T12:00:00.000Z');
+
+    await new SQLiteWorkoutRepository(db).removeExercise('removed', now);
+
+    expect(db.withTransactionAsync).toHaveBeenCalledTimes(1);
+    expect(db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM workout_exercises WHERE id = ?',
+      'removed',
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(
+      'UPDATE workout_exercises SET position = ? WHERE id = ?',
+      0,
+      'remaining-first',
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE workouts SET updated_at'),
+      now.toISOString(),
+      'workout-1',
+    );
   });
 
   it('клонирует тренировку с упражнениями и подходами в одной транзакции', async () => {

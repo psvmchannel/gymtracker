@@ -6,6 +6,12 @@ export type ProgressPoint = {
 
 export type ChartPoint = ProgressPoint & { x: number; y: number };
 export type ProgressMetric = 'maxWeight' | 'totalVolume';
+export type ChartInsets = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
 
 export function calculateWorkoutVolume(
   sets: { weight: number; repetitions: number }[],
@@ -18,11 +24,15 @@ export function layoutProgressPoints(
   metric: ProgressMetric,
   width: number,
   height: number,
-  padding = 20,
+  padding: number | ChartInsets = 20,
 ): ChartPoint[] {
   if (points.length === 0) return [];
-  const usableWidth = Math.max(0, width - padding * 2);
-  const usableHeight = Math.max(0, height - padding * 2);
+  const insets =
+    typeof padding === 'number'
+      ? { bottom: padding, left: padding, right: padding, top: padding }
+      : padding;
+  const usableWidth = Math.max(0, width - insets.left - insets.right);
+  const usableHeight = Math.max(0, height - insets.top - insets.bottom);
   const values = points.map((point) => point[metric]);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
@@ -33,10 +43,10 @@ export function layoutProgressPoints(
     x:
       points.length === 1
         ? width / 2
-        : padding + (index / (points.length - 1)) * usableWidth,
+        : insets.left + (index / (points.length - 1)) * usableWidth,
     y:
       valueRange === 0
-        ? height / 2
-        : padding + ((maxValue - point[metric]) / valueRange) * usableHeight,
+        ? insets.top + usableHeight / 2
+        : insets.top + ((maxValue - point[metric]) / valueRange) * usableHeight,
   }));
 }

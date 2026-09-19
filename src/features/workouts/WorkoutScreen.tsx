@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 
+import { DeleteIcon } from '../../components/DeleteIcon';
 import { MUSCLE_GROUP_LABELS, type Exercise } from '../../domain/exercise';
 import {
   findWorkoutByLocalDate,
@@ -322,7 +323,8 @@ export function WorkoutScreen({
     if (!selected) return;
 
     await runMutation(async () => {
-      if (editingSet?.workoutExerciseId === workoutExerciseId) {
+      const isEditing = editingSet?.workoutExerciseId === workoutExerciseId;
+      if (isEditing) {
         await workoutRepository.updateSet(
           editingSet.id,
           validation.value,
@@ -341,6 +343,11 @@ export function WorkoutScreen({
         [workoutExerciseId]: EMPTY_SET,
       }));
       await refresh(selected.id);
+      if (!isEditing) {
+        requestAnimationFrame(() => {
+          weightInputRefs.current[workoutExerciseId]?.focus();
+        });
+      }
     });
   }
 
@@ -562,12 +569,9 @@ export function WorkoutScreen({
                               disabled={isSaving}
                               hitSlop={8}
                               onPress={() => confirmDeleteSet(set.id)}
-                              style={({ pressed }) => [
-                                styles.deleteSetButton,
-                                pressed && styles.pressedIconButton,
-                              ]}
+                              style={styles.deleteSetButton}
                             >
-                              <Text style={styles.deleteSetIcon}>×</Text>
+                              <DeleteIcon />
                             </Pressable>
                           </View>
                         ))
@@ -866,11 +870,7 @@ function ExerciseCardControl({
       disabled={disabled}
       hitSlop={8}
       onPress={onToggleCollapsed}
-      style={({ pressed }) => [
-        styles.exerciseCardControl,
-        pressed && styles.pressedIconButton,
-        disabled && styles.disabledButton,
-      ]}
+      style={[styles.exerciseCardControl, disabled && styles.disabledButton]}
     >
       {isDragging ? (
         <View accessibilityElementsHidden style={styles.dragIcon}>
@@ -914,6 +914,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 11,
+    ...Platform.select({ web: { outlineWidth: 0 } }),
   },
   dateInput: { flex: 1 },
   primaryButton: {
@@ -961,6 +962,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 12,
     padding: 16,
+    userSelect: 'none',
   },
   draggingCard: { elevation: 8, zIndex: 2 },
   cardTitle: {
@@ -1029,8 +1031,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-  pressedIconButton: { backgroundColor: '#f3f4f6' },
-  deleteSetIcon: { color: '#b91c1c', fontSize: 28, lineHeight: 30 },
   setForm: { flexDirection: 'row', gap: 8, marginTop: 14 },
   setInput: { flex: 1, minWidth: 0 },
   removeExerciseButton: { alignSelf: 'flex-start', marginTop: 14 },

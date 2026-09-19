@@ -55,6 +55,24 @@ describe('layoutProgressPoints', () => {
     ]);
   });
 
+  it('поддерживает отдельные отступы для каждой стороны графика', () => {
+    expect(
+      layoutProgressPoints(
+        [
+          { date: '2026-09-01', maxWeight: 70, totalVolume: 2100 },
+          { date: '2026-09-08', maxWeight: 90, totalVolume: 1800 },
+        ],
+        'maxWeight',
+        300,
+        180,
+        { bottom: 30, left: 40, right: 10, top: 20 },
+      ),
+    ).toEqual([
+      expect.objectContaining({ x: 40, y: 150 }),
+      expect.objectContaining({ x: 290, y: 20 }),
+    ]);
+  });
+
   it('считает объём без округления дробного веса', () => {
     expect(
       calculateWorkoutVolume([

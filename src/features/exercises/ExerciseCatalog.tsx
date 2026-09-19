@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import { DeleteIcon } from '../../components/DeleteIcon';
 import {
   MUSCLE_GROUPS,
   MUSCLE_GROUP_LABELS,
@@ -243,12 +245,13 @@ export function ExerciseCatalog({ repository }: Props) {
                       disabled={isSaving}
                       hitSlop={8}
                       onPress={() => startEditing(exercise)}
-                      style={({ pressed }) => [
-                        styles.iconButton,
-                        pressed && styles.pressedIconButton,
-                      ]}
+                      style={styles.iconButton}
                     >
-                      <Text style={styles.editIcon}>✎</Text>
+                      <Image
+                        accessibilityElementsHidden
+                        source={require('../../assets/edit-icon.png')}
+                        style={styles.editIcon}
+                      />
                     </Pressable>
                     <Pressable
                       accessibilityLabel={`Удалить упражнение «${exercise.name}»`}
@@ -256,12 +259,9 @@ export function ExerciseCatalog({ repository }: Props) {
                       disabled={isSaving}
                       hitSlop={8}
                       onPress={() => confirmDeleteExercise(exercise)}
-                      style={({ pressed }) => [
-                        styles.iconButton,
-                        pressed && styles.pressedIconButton,
-                      ]}
+                      style={styles.iconButton}
                     >
-                      <Text style={styles.deleteIcon}>×</Text>
+                      <DeleteIcon />
                     </Pressable>
                   </View>
                 </View>
@@ -334,6 +334,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
+    ...Platform.select({ web: { outlineWidth: 0 } }),
   },
   groupList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   groupButton: {
@@ -412,7 +413,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  cardActions: { flexDirection: 'row', gap: 4, marginLeft: 8 },
+  cardActions: { flexDirection: 'row', gap: 0, marginLeft: 8 },
   iconButton: {
     alignItems: 'center',
     borderRadius: 10,
@@ -420,17 +421,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-  pressedIconButton: { backgroundColor: '#f3f4f6' },
   editIcon: {
-    color: '#2563eb',
-    fontSize: 24,
-    lineHeight: 28,
-    transform: [{ translateX: 4 }],
-  },
-  deleteIcon: {
-    color: '#b91c1c',
-    fontSize: 28,
-    lineHeight: 30,
-    transform: [{ translateX: 3 }],
+    height: 18,
+    resizeMode: 'contain',
+    tintColor: '#2563eb',
+    transform: [{ translateX: 5 }, { translateY: -2 }],
+    width: 18,
   },
 });

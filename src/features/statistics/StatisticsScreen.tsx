@@ -27,6 +27,7 @@ type Props = {
 };
 
 const CHART_HEIGHT = 220;
+const CHART_INSETS = { bottom: 42, left: 28, right: 16, top: 26 } as const;
 const METRICS: { id: ProgressMetric; label: string; title: string }[] = [
   { id: 'maxWeight', label: 'Макс. вес', title: 'Максимальный вес, кг' },
   { id: 'totalVolume', label: 'Объём', title: 'Объём нагрузки, кг' },
@@ -92,9 +93,50 @@ export function StatisticsScreen({
   }, [selectedId, workoutRepository]);
 
   const chartPoints = useMemo(
-    () => layoutProgressPoints(progress, metric, chartWidth, CHART_HEIGHT, 26),
+    () =>
+      layoutProgressPoints(
+        progress,
+        metric,
+        chartWidth,
+        CHART_HEIGHT,
+        CHART_INSETS,
+      ),
     [chartWidth, metric, progress],
   );
+  const yAxisTicks = useMemo(() => {
+    const values = progress.map((point) => point[metric]);
+    if (values.length === 0) return [];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (min === max) {
+      return [
+        {
+          value: min,
+          y:
+            CHART_INSETS.top +
+            (CHART_HEIGHT - CHART_INSETS.top - CHART_INSETS.bottom) / 2,
+        },
+      ];
+    }
+    return [
+      { value: max, y: CHART_INSETS.top },
+      {
+        value: (min + max) / 2,
+        y:
+          CHART_INSETS.top +
+          (CHART_HEIGHT - CHART_INSETS.top - CHART_INSETS.bottom) / 2,
+      },
+      { value: min, y: CHART_HEIGHT - CHART_INSETS.bottom },
+    ];
+  }, [metric, progress]);
+  const xAxisTicks = useMemo(() => {
+    if (chartPoints.length <= 2) return chartPoints;
+    return [
+      chartPoints[0]!,
+      chartPoints[Math.floor((chartPoints.length - 1) / 2)]!,
+      chartPoints[chartPoints.length - 1]!,
+    ];
+  }, [chartPoints]);
   const selected = exercises.find(({ id }) => id === selectedId);
   const metricDetails = METRICS.find(({ id }) => id === metric)!;
 
@@ -200,6 +242,32 @@ export function StatisticsScreen({
               }
               style={styles.chart}
             >
+              <View accessibilityElementsHidden style={styles.yAxis} />
+              <View accessibilityElementsHidden style={styles.xAxis} />
+              {yAxisTicks.map((tick) => (
+                <View
+                  accessibilityElementsHidden
+                  key={tick.y}
+                  style={[styles.yTick, { top: tick.y }]}
+                >
+                  <Text style={styles.yTickLabel}>
+                    {formatAxisValue(tick.value)}
+                  </Text>
+                  <View style={styles.yTickMark} />
+                </View>
+              ))}
+              {xAxisTicks.map((tick) => (
+                <View
+                  accessibilityElementsHidden
+                  key={tick.date}
+                  style={[styles.xTick, { left: tick.x }]}
+                >
+                  <View style={styles.xTickMark} />
+                  <Text style={styles.xTickLabel}>
+                    {formatAxisDate(tick.date)}
+                  </Text>
+                </View>
+              ))}
               {chartPoints.slice(1).map((point, index) => {
                 const previous = chartPoints[index];
                 if (!previous) return null;
@@ -301,12 +369,65 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' },
   chart: {
-    borderBottomColor: '#d1d5db',
-    borderBottomWidth: 1,
     height: CHART_HEIGHT,
     marginTop: 12,
     overflow: 'hidden',
     position: 'relative',
+  },
+  yAxis: {
+    backgroundColor: '#9ca3af',
+    bottom: CHART_INSETS.bottom,
+    left: CHART_INSETS.left,
+    position: 'absolute',
+    top: CHART_INSETS.top,
+    width: 1,
+  },
+  xAxis: {
+    backgroundColor: '#9ca3af',
+    bottom: CHART_INSETS.bottom,
+    height: 1,
+    left: CHART_INSETS.left,
+    position: 'absolute',
+    right: CHART_INSETS.right,
+  },
+  yTick: {
+    height: 16,
+    left: 0,
+    position: 'absolute',
+    transform: [{ translateY: -8 }],
+    width: CHART_INSETS.left + 4,
+  },
+  yTickLabel: {
+    color: '#6b7280',
+    fontSize: 10,
+    paddingRight: 8,
+    textAlign: 'right',
+  },
+  yTickMark: {
+    backgroundColor: '#9ca3af',
+    height: 1,
+    position: 'absolute',
+    right: 0,
+    top: 8,
+    width: 5,
+  },
+  xTick: {
+    position: 'absolute',
+    top: CHART_HEIGHT - CHART_INSETS.bottom,
+    transform: [{ translateX: -16 }],
+    width: 32,
+  },
+  xTickMark: {
+    alignSelf: 'center',
+    backgroundColor: '#9ca3af',
+    height: 5,
+    width: 1,
+  },
+  xTickLabel: {
+    color: '#6b7280',
+    fontSize: 10,
+    marginTop: 3,
+    textAlign: 'center',
   },
   line: { backgroundColor: '#2563eb', height: 3, position: 'absolute' },
   dot: {
@@ -332,3 +453,14 @@ const styles = StyleSheet.create({
   date: { color: '#6b7280', fontSize: 14 },
   value: { color: '#111827', fontSize: 14, fontWeight: '700' },
 });
+
+function formatAxisValue(value: number): string {
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(
+    value,
+  );
+}
+
+function formatAxisDate(date: string): string {
+  const [, month, day] = date.split('-');
+  return `${day}.${month}`;
+}

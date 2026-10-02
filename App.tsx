@@ -32,6 +32,9 @@ export default function App() {
   const [dataRevision, setDataRevision] = useState(0);
   const [databaseError, setDatabaseError] = useState(false);
   const [storageWarning, setStorageWarning] = useState(false);
+  const [collapsedExerciseIds, setCollapsedExerciseIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const activeLabel = APP_SECTIONS.find(
     ({ id }) => id === activeSection,
   )?.label;
@@ -64,8 +67,17 @@ export default function App() {
     <ExerciseCatalog repository={repositories.exercises} />
   ) : activeSection === 'workouts' ? (
     <WorkoutScreen
+      collapsedExerciseIds={collapsedExerciseIds}
       exerciseRepository={repositories.exercises}
       key={dataRevision}
+      onToggleExerciseCollapsed={(workoutExerciseId) =>
+        setCollapsedExerciseIds((current) => {
+          const next = new Set(current);
+          if (next.has(workoutExerciseId)) next.delete(workoutExerciseId);
+          else next.add(workoutExerciseId);
+          return next;
+        })
+      }
       workoutRepository={repositories.workouts}
     />
   ) : (

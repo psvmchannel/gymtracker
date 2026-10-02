@@ -27,7 +27,7 @@ type Props = {
 };
 
 const CHART_HEIGHT = 220;
-const CHART_INSETS = { bottom: 42, left: 28, right: 16, top: 26 } as const;
+const CHART_INSETS = { bottom: 42, left: 40, right: 16, top: 26 } as const;
 const METRICS: { id: ProgressMetric; label: string; title: string }[] = [
   { id: 'maxWeight', label: 'Макс. вес', title: 'Максимальный вес, кг' },
   { id: 'totalVolume', label: 'Объём', title: 'Объём нагрузки, кг' },
@@ -250,10 +250,19 @@ export function StatisticsScreen({
                   key={tick.y}
                   style={[styles.yTick, { top: tick.y }]}
                 >
-                  <Text style={styles.yTickLabel}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.yTickLabel,
+                      tick.y === CHART_HEIGHT - CHART_INSETS.bottom &&
+                        styles.originYTickLabel,
+                    ]}
+                  >
                     {formatAxisValue(tick.value)}
                   </Text>
-                  <View style={styles.yTickMark} />
+                  {tick.y !== CHART_HEIGHT - CHART_INSETS.bottom ? (
+                    <View style={styles.yTickMark} />
+                  ) : null}
                 </View>
               ))}
               {xAxisTicks.map((tick) => (
@@ -400,9 +409,11 @@ const styles = StyleSheet.create({
   yTickLabel: {
     color: '#6b7280',
     fontSize: 10,
+    fontVariant: ['tabular-nums'],
     paddingRight: 8,
     textAlign: 'right',
   },
+  originYTickLabel: { transform: [{ translateY: -8 }] },
   yTickMark: {
     backgroundColor: '#9ca3af',
     height: 1,

@@ -34,20 +34,27 @@ import {
 import type { ExerciseRepository } from '../../repositories/exerciseRepository';
 import type { WorkoutRepository } from '../../repositories/workoutRepository';
 import { confirmAction } from '../../platform/confirmAction';
+import {
+  getExerciseDragTarget,
+  type ExerciseLayout,
+} from './exerciseReordering';
 
 type Props = {
+  collapsedExerciseIds: ReadonlySet<string>;
   exerciseRepository: ExerciseRepository;
+  onToggleExerciseCollapsed: (workoutExerciseId: string) => void;
   workoutRepository: WorkoutRepository;
   now?: () => Date;
 };
 
 const EMPTY_SET: ExerciseSetDraft = { weight: '', repetitions: '' };
 
-type ExerciseLayout = { height: number; y: number };
 type DragPreview = { id: string; targetIndex: number };
 
 export function WorkoutScreen({
+  collapsedExerciseIds,
   exerciseRepository,
+  onToggleExerciseCollapsed,
   workoutRepository,
   now = () => new Date(),
 }: Props) {
@@ -66,9 +73,6 @@ export function WorkoutScreen({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
-  const [collapsedExerciseIds, setCollapsedExerciseIds] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [exerciseLayouts, setExerciseLayouts] = useState<
     Record<string, ExerciseLayout>
   >({});
@@ -224,11 +228,6 @@ export function WorkoutScreen({
             delete next[workoutExerciseId];
             return next;
           });
-          setCollapsedExerciseIds((current) => {
-            const next = new Set(current);
-            next.delete(workoutExerciseId);
-            return next;
-          });
           await refresh(selected.id);
         }),
     });
@@ -264,30 +263,18 @@ export function WorkoutScreen({
     });
   }
 
-  function getExerciseDragTarget(workoutExerciseId: string, offsetY: number) {
+  function findExerciseDragTarget(workoutExerciseId: string, offsetY: number) {
     if (!selected) return;
-    const source = exerciseLayouts[workoutExerciseId];
-    if (!source) return;
-    const draggedCenter = source.y + source.height / 2 + offsetY;
-    let targetIndex = selected.exercises.findIndex(
-      ({ id }) => id === workoutExerciseId,
+    return getExerciseDragTarget(
+      selected.exercises.map(({ id }) => id),
+      exerciseLayouts,
+      workoutExerciseId,
+      offsetY,
     );
-    let closestDistance = Number.POSITIVE_INFINITY;
-
-    selected.exercises.forEach((exercise, index) => {
-      const layout = exerciseLayouts[exercise.id];
-      if (!layout) return;
-      const distance = Math.abs(draggedCenter - (layout.y + layout.height / 2));
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        targetIndex = index;
-      }
-    });
-    return targetIndex;
   }
 
   function previewExerciseDrag(workoutExerciseId: string, offsetY: number) {
-    const targetIndex = getExerciseDragTarget(workoutExerciseId, offsetY);
+    const targetIndex = findExerciseDragTarget(workoutExerciseId, offsetY);
     if (targetIndex === undefined) return;
     setDragPreview((current) =>
       current?.id === workoutExerciseId && current.targetIndex === targetIndex
@@ -297,20 +284,11 @@ export function WorkoutScreen({
   }
 
   function finishExerciseDrag(workoutExerciseId: string, offsetY: number) {
-    const targetIndex = getExerciseDragTarget(workoutExerciseId, offsetY);
+    const targetIndex = findExerciseDragTarget(workoutExerciseId, offsetY);
     setDragPreview(null);
     if (targetIndex !== undefined) {
       moveExercise(workoutExerciseId, targetIndex);
     }
-  }
-
-  function toggleExerciseCollapsed(workoutExerciseId: string) {
-    setCollapsedExerciseIds((current) => {
-      const next = new Set(current);
-      if (next.has(workoutExerciseId)) next.delete(workoutExerciseId);
-      else next.add(workoutExerciseId);
-      return next;
-    });
   }
 
   async function saveSet(workoutExerciseId: string) {
@@ -514,13 +492,23 @@ export function WorkoutScreen({
                     });
                   }}
                   onToggleCollapsed={() =>
-                    toggleExerciseCollapsed(workoutExercise.id)
+                    onToggleExerciseCollapsed(workoutExercise.id)
                   }
                   previewOffset={displacedOffset}
                 >
-                  <Text style={styles.cardTitle}>
-                    {workoutExercise.exerciseName}
-                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !isCollapsed }}
+                    disabled={isSaving}
+                    onPress={() =>
+                      onToggleExerciseCollapsed(workoutExercise.id)
+                    }
+                    style={styles.cardTitleButton}
+                  >
+                    <Text style={styles.cardTitle}>
+                      {workoutExercise.exerciseName}
+                    </Text>
+                  </Pressable>
                   {!isCollapsed ? (
                     <>
                       {workoutExercise.sets.length === 0 ? (
@@ -969,8 +957,8 @@ const styles = StyleSheet.create({
     color: '#111827',
     fontSize: 18,
     fontWeight: '700',
-    paddingRight: 44,
   },
+  cardTitleButton: { alignSelf: 'flex-start', paddingRight: 44 },
   exerciseCardControl: {
     alignItems: 'center',
     height: 44,

@@ -76,7 +76,20 @@ export function WorkoutScreen({
   const [exerciseLayouts, setExerciseLayouts] = useState<
     Record<string, ExerciseLayout>
   >({});
+  const collapseSuppressed = useRef(false);
+  const collapseSuppressionTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const weightInputRefs = useRef<Record<string, TextInput | null>>({});
+
+  useEffect(
+    () => () => {
+      if (collapseSuppressionTimer.current) {
+        clearTimeout(collapseSuppressionTimer.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!editingSet) return;
@@ -284,11 +297,42 @@ export function WorkoutScreen({
   }
 
   function finishExerciseDrag(workoutExerciseId: string, offsetY: number) {
+    suppressCollapseAfterDrag();
     const targetIndex = findExerciseDragTarget(workoutExerciseId, offsetY);
     setDragPreview(null);
     if (targetIndex !== undefined) {
       moveExercise(workoutExerciseId, targetIndex);
     }
+  }
+
+  function cancelExerciseDrag() {
+    suppressCollapseAfterDrag();
+    setDragPreview(null);
+  }
+
+  function startExerciseDrag(workoutExerciseId: string, targetIndex: number) {
+    if (collapseSuppressionTimer.current) {
+      clearTimeout(collapseSuppressionTimer.current);
+      collapseSuppressionTimer.current = null;
+    }
+    collapseSuppressed.current = true;
+    setDragPreview({ id: workoutExerciseId, targetIndex });
+  }
+
+  function suppressCollapseAfterDrag() {
+    collapseSuppressed.current = true;
+    if (collapseSuppressionTimer.current) {
+      clearTimeout(collapseSuppressionTimer.current);
+    }
+    collapseSuppressionTimer.current = setTimeout(() => {
+      collapseSuppressed.current = false;
+      collapseSuppressionTimer.current = null;
+    }, 250);
+  }
+
+  function toggleExerciseCollapsed(workoutExerciseId: string) {
+    if (collapseSuppressed.current) return;
+    onToggleExerciseCollapsed(workoutExerciseId);
   }
 
   async function saveSet(workoutExerciseId: string) {
@@ -466,7 +510,7 @@ export function WorkoutScreen({
                   exerciseName={workoutExercise.exerciseName}
                   isDragging={dragPreview?.id === workoutExercise.id}
                   key={workoutExercise.id}
-                  onDragCancel={() => setDragPreview(null)}
+                  onDragCancel={cancelExerciseDrag}
                   onDragEnd={(offsetY) =>
                     finishExerciseDrag(workoutExercise.id, offsetY)
                   }
@@ -474,10 +518,7 @@ export function WorkoutScreen({
                     previewExerciseDrag(workoutExercise.id, offsetY)
                   }
                   onDragStart={() =>
-                    setDragPreview({
-                      id: workoutExercise.id,
-                      targetIndex: currentIndex,
-                    })
+                    startExerciseDrag(workoutExercise.id, currentIndex)
                   }
                   onLayout={(event) => {
                     const { height, y } = event.nativeEvent.layout;
@@ -492,7 +533,7 @@ export function WorkoutScreen({
                     });
                   }}
                   onToggleCollapsed={() =>
-                    onToggleExerciseCollapsed(workoutExercise.id)
+                    toggleExerciseCollapsed(workoutExercise.id)
                   }
                   previewOffset={displacedOffset}
                 >
@@ -500,9 +541,7 @@ export function WorkoutScreen({
                     accessibilityRole="button"
                     accessibilityState={{ expanded: !isCollapsed }}
                     disabled={isSaving}
-                    onPress={() =>
-                      onToggleExerciseCollapsed(workoutExercise.id)
-                    }
+                    onPress={() => toggleExerciseCollapsed(workoutExercise.id)}
                     style={styles.cardTitleButton}
                   >
                     <Text style={styles.cardTitle}>

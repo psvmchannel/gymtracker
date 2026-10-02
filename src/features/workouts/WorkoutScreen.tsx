@@ -76,20 +76,8 @@ export function WorkoutScreen({
   const [exerciseLayouts, setExerciseLayouts] = useState<
     Record<string, ExerciseLayout>
   >({});
-  const collapseSuppressed = useRef(false);
-  const collapseSuppressionTimer = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const ignoreNextCollapsePress = useRef(false);
   const weightInputRefs = useRef<Record<string, TextInput | null>>({});
-
-  useEffect(
-    () => () => {
-      if (collapseSuppressionTimer.current) {
-        clearTimeout(collapseSuppressionTimer.current);
-      }
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!editingSet) return;
@@ -297,7 +285,6 @@ export function WorkoutScreen({
   }
 
   function finishExerciseDrag(workoutExerciseId: string, offsetY: number) {
-    suppressCollapseAfterDrag();
     const targetIndex = findExerciseDragTarget(workoutExerciseId, offsetY);
     setDragPreview(null);
     if (targetIndex !== undefined) {
@@ -306,32 +293,23 @@ export function WorkoutScreen({
   }
 
   function cancelExerciseDrag() {
-    suppressCollapseAfterDrag();
     setDragPreview(null);
   }
 
   function startExerciseDrag(workoutExerciseId: string, targetIndex: number) {
-    if (collapseSuppressionTimer.current) {
-      clearTimeout(collapseSuppressionTimer.current);
-      collapseSuppressionTimer.current = null;
-    }
-    collapseSuppressed.current = true;
+    ignoreNextCollapsePress.current = true;
     setDragPreview({ id: workoutExerciseId, targetIndex });
   }
 
-  function suppressCollapseAfterDrag() {
-    collapseSuppressed.current = true;
-    if (collapseSuppressionTimer.current) {
-      clearTimeout(collapseSuppressionTimer.current);
-    }
-    collapseSuppressionTimer.current = setTimeout(() => {
-      collapseSuppressed.current = false;
-      collapseSuppressionTimer.current = null;
-    }, 250);
+  function startExerciseInteraction() {
+    ignoreNextCollapsePress.current = false;
   }
 
   function toggleExerciseCollapsed(workoutExerciseId: string) {
-    if (collapseSuppressed.current) return;
+    if (ignoreNextCollapsePress.current) {
+      ignoreNextCollapsePress.current = false;
+      return;
+    }
     onToggleExerciseCollapsed(workoutExerciseId);
   }
 
@@ -532,6 +510,7 @@ export function WorkoutScreen({
                           };
                     });
                   }}
+                  onInteractionStart={startExerciseInteraction}
                   onToggleCollapsed={() =>
                     toggleExerciseCollapsed(workoutExercise.id)
                   }
@@ -721,6 +700,7 @@ function DraggableExerciseCard({
   onDragEnd,
   onDragMove,
   onDragStart,
+  onInteractionStart,
   onLayout,
   onToggleCollapsed,
   previewOffset,
@@ -734,6 +714,7 @@ function DraggableExerciseCard({
   onDragEnd: (offsetY: number) => void;
   onDragMove: (offsetY: number) => void;
   onDragStart: () => void;
+  onInteractionStart: () => void;
   onLayout: (event: LayoutChangeEvent) => void;
   onToggleCollapsed: () => void;
   previewOffset: number;
@@ -749,6 +730,7 @@ function DraggableExerciseCard({
     onDragEnd,
     onDragMove,
     onDragStart,
+    onInteractionStart,
     onToggleCollapsed,
   });
   useEffect(() => {
@@ -758,6 +740,7 @@ function DraggableExerciseCard({
       onDragEnd,
       onDragMove,
       onDragStart,
+      onInteractionStart,
       onToggleCollapsed,
     };
   }, [
@@ -766,6 +749,7 @@ function DraggableExerciseCard({
     onDragEnd,
     onDragMove,
     onDragStart,
+    onInteractionStart,
     onToggleCollapsed,
   ]);
 
@@ -783,6 +767,7 @@ function DraggableExerciseCard({
   }
 
   function handleTouchStart(event: GestureResponderEvent) {
+    dragCallbacks.current.onInteractionStart();
     if (dragCallbacks.current.disabled) return;
     touchStartY.current = event.nativeEvent.pageY;
     dragActivated.current = false;
@@ -804,8 +789,9 @@ function DraggableExerciseCard({
     }
   }
 
-  function handleTouchEnd() {
+  function handleTouchEnd(event: GestureResponderEvent) {
     clearLongPressTimer();
+    if (Platform.OS === 'web' && dragActivated.current) event.preventDefault();
     if (dragActivated.current && !dragResponderActive.current) {
       dragActivated.current = false;
       dragCallbacks.current.onDragCancel();
@@ -826,7 +812,8 @@ function DraggableExerciseCard({
         translateY.setValue(gesture.dy);
         dragCallbacks.current.onDragMove(gesture.dy);
       },
-      onPanResponderRelease: (_, gesture) => {
+      onPanResponderRelease: (event, gesture) => {
+        if (Platform.OS === 'web') event.preventDefault();
         clearLongPressTimer();
         translateY.setValue(0);
         dragActivated.current = false;
@@ -834,7 +821,8 @@ function DraggableExerciseCard({
         dragCallbacks.current.onDragEnd(gesture.dy);
       },
       onPanResponderTerminationRequest: () => false,
-      onPanResponderTerminate: () => {
+      onPanResponderTerminate: (event) => {
+        if (Platform.OS === 'web') event.preventDefault();
         clearLongPressTimer();
         translateY.setValue(0);
         if (dragActivated.current) {

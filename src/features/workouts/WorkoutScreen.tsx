@@ -61,6 +61,11 @@ export function WorkoutScreen({
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [activeExercises, setActiveExercises] = useState<Exercise[]>([]);
   const [selected, setSelected] = useState<WorkoutDetails | null>(null);
+  const [copyAvailability, setCopyAvailability] = useState<{
+    workout: WorkoutDetails;
+    exerciseIds: Set<string>;
+  } | null>(null);
+  const copyInProgress = useRef(false);
   const [initialLocalDate] = useState(() => formatLocalDate(now()));
   const [date, setDate] = useState(initialLocalDate);
   const [setDrafts, setSetDrafts] = useState<Record<string, ExerciseSetDraft>>(
@@ -78,6 +83,34 @@ export function WorkoutScreen({
   >({});
   const ignoreNextCollapsePress = useRef(false);
   const weightInputRefs = useRef<Record<string, TextInput | null>>({});
+
+  useEffect(() => {
+    if (!selected) return;
+    let isCurrent = true;
+    void Promise.all(
+      selected.exercises
+        .filter((exercise) => exercise.sets.length === 0)
+        .map(async (exercise) => ({
+          id: exercise.id,
+          sets: await workoutRepository.getPreviousSets(exercise.id),
+        })),
+    )
+      .then((results) => {
+        if (isCurrent)
+          setCopyAvailability({
+            workout: selected,
+            exerciseIds: new Set(
+              results.filter(({ sets }) => sets.length > 0).map(({ id }) => id),
+            ),
+          });
+      })
+      .catch(() => {
+        if (isCurrent) setError('Не удалось загрузить предыдущие подходы.');
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [selected, workoutRepository]);
 
   useEffect(() => {
     if (!editingSet) return;
@@ -207,6 +240,19 @@ export function WorkoutScreen({
       await workoutRepository.addExercise(selected.id, exerciseId, now());
       await refresh(selected.id);
     });
+  }
+
+  async function copyPreviousSets(workoutExerciseId: string) {
+    if (!selected || isSaving || copyInProgress.current) return;
+    copyInProgress.current = true;
+    try {
+      await runMutation(async () => {
+        await workoutRepository.copyPreviousSets(workoutExerciseId, now());
+        await refresh(selected.id);
+      });
+    } finally {
+      copyInProgress.current = false;
+    }
   }
 
   function confirmRemoveExercise(
@@ -527,6 +573,25 @@ export function WorkoutScreen({
                       {workoutExercise.exerciseName}
                     </Text>
                   </Pressable>
+                  {workoutExercise.sets.length === 0 &&
+                  copyAvailability?.workout === selected &&
+                  copyAvailability.exerciseIds.has(workoutExercise.id) ? (
+                    <Pressable
+                      accessibilityLabel={`Скопировать предыдущие подходы упражнения «${workoutExercise.exerciseName}»`}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: isSaving }}
+                      disabled={isSaving}
+                      onPress={() => void copyPreviousSets(workoutExercise.id)}
+                      style={[
+                        styles.copySetsButton,
+                        isSaving && styles.disabledButton,
+                      ]}
+                    >
+                      <Text style={styles.cloneText}>
+                        Скопировать предыдущие подходы
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   {!isCollapsed ? (
                     <>
                       {workoutExercise.sets.length === 0 ? (
@@ -986,6 +1051,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardTitleButton: { alignSelf: 'flex-start', paddingRight: 44 },
+  copySetsButton: { alignSelf: 'flex-start', paddingVertical: 12 },
   exerciseCardControl: {
     alignItems: 'center',
     height: 44,

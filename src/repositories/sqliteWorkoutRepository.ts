@@ -45,6 +45,24 @@ function mapWorkout(row: WorkoutRow): Workout {
   };
 }
 
+// Only an empty target can use the latest earlier occurrence with saved sets.
+const PREVIOUS_SETS_QUERY = `
+  SELECT weight, repetitions, position FROM exercise_sets
+  WHERE workout_exercise_id = (
+    SELECT previous.id FROM workout_exercises current
+    JOIN workouts target ON target.id = current.workout_id
+    JOIN workout_exercises previous ON previous.exercise_id = current.exercise_id
+    JOIN workouts source ON source.id = previous.workout_id
+    WHERE current.id = ? AND source.date < target.date
+      AND NOT EXISTS (
+        SELECT 1 FROM exercise_sets WHERE workout_exercise_id = current.id
+      )
+      AND EXISTS (
+        SELECT 1 FROM exercise_sets WHERE workout_exercise_id = previous.id
+      )
+    ORDER BY source.date DESC LIMIT 1
+  ) ORDER BY position`;
+
 export class SQLiteWorkoutRepository implements WorkoutRepository {
   constructor(private readonly db: SQLiteDatabase) {}
 
@@ -291,6 +309,31 @@ export class SQLiteWorkoutRepository implements WorkoutRepository {
         );
       }
       await this.touchWorkout(workoutId, now);
+    });
+  }
+
+  async getPreviousSets(
+    workoutExerciseId: string,
+  ): Promise<ParsedExerciseSet[]> {
+    const rows = await this.db.getAllAsync<ParsedExerciseSet>(
+      PREVIOUS_SETS_QUERY,
+      workoutExerciseId,
+    );
+    return rows.map(({ weight, repetitions }) => ({ weight, repetitions }));
+  }
+
+  async copyPreviousSets(workoutExerciseId: string, now: Date): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      const result = await this.db.runAsync(
+        `INSERT INTO exercise_sets (id, workout_exercise_id, weight, repetitions, position)
+         SELECT lower(hex(randomblob(16))), ?, weight, repetitions, position
+         FROM (${PREVIOUS_SETS_QUERY})`,
+        workoutExerciseId,
+        workoutExerciseId,
+      );
+      if (result.changes > 0) {
+        await this.touchWorkoutByExercise(workoutExerciseId, now);
+      }
     });
   }
 

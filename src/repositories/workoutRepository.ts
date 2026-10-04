@@ -33,6 +33,8 @@ export interface WorkoutRepository {
     workoutExerciseIds: string[],
     now: Date,
   ): Promise<void>;
+  getPreviousSets(workoutExerciseId: string): Promise<ParsedExerciseSet[]>;
+  copyPreviousSets(workoutExerciseId: string, now: Date): Promise<void>;
   addSet(
     workoutExerciseId: string,
     draft: ParsedExerciseSet,

@@ -263,6 +263,28 @@ export class IndexedDbRepository
     });
   }
 
+  async getPreviousSets(
+    workoutExerciseId: string,
+  ): Promise<ParsedExerciseSet[]> {
+    return previousSetsFromSnapshot(await this.read(), workoutExerciseId);
+  }
+
+  async copyPreviousSets(workoutExerciseId: string, now: Date): Promise<void> {
+    await this.updateSnapshot((data) => {
+      const sets = previousSetsFromSnapshot(data, workoutExerciseId);
+      if (sets.length === 0) return;
+      sets.forEach((set, position) => {
+        data.exerciseSets.push({
+          ...set,
+          id: newId(),
+          workoutExerciseId,
+          position,
+        });
+      });
+      touchByWorkoutExercise(data, workoutExerciseId, now);
+    });
+  }
+
   async addSet(
     workoutExerciseId: string,
     draft: ParsedExerciseSet,
@@ -386,6 +408,40 @@ export class IndexedDbRepository
     await transactionDone(transaction);
     return result;
   }
+}
+
+function previousSetsFromSnapshot(
+  data: BackupSnapshot,
+  workoutExerciseId: string,
+): ParsedExerciseSet[] {
+  const target = data.workoutExercises.find(
+    ({ id }) => id === workoutExerciseId,
+  );
+  const workout = data.workouts.find(({ id }) => id === target?.workoutId);
+  if (
+    !target ||
+    !workout ||
+    data.exerciseSets.some((set) => set.workoutExerciseId === workoutExerciseId)
+  )
+    return [];
+
+  const previousWorkouts = data.workouts
+    .filter(({ date }) => date < workout.date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  for (const previous of previousWorkouts) {
+    const exercise = data.workoutExercises.find(
+      (item) =>
+        item.workoutId === previous.id && item.exerciseId === target.exerciseId,
+    );
+    if (!exercise) continue;
+    const sets = data.exerciseSets
+      .filter((set) => set.workoutExerciseId === exercise.id)
+      .sort((a, b) => a.position - b.position);
+    if (sets.length > 0) {
+      return sets.map(({ weight, repetitions }) => ({ weight, repetitions }));
+    }
+  }
+  return [];
 }
 
 function detailsFromSnapshot(
